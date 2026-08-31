@@ -104,6 +104,47 @@ class AhListingManagerTest {
     }
 
     @Test
+    void rejectedListingDoesNotConsumeASlot() {
+        AhListingManager manager = new AhListingManager(18);
+        manager.onListingSent();
+        assertEquals(1, manager.getActiveListings());
+
+        assertTrue(manager.onChatMessage("§cYou cannot do that while in the air!"));
+        assertEquals(0, manager.getActiveListings(), "reddedilen ilan slot harcamamalı");
+    }
+
+    @Test
+    void combatRejectionAlsoReturnsTheSlot() {
+        AhListingManager manager = new AhListingManager(18);
+        manager.onListingSent();
+        assertTrue(manager.onChatMessage("§cYou cannot do this in combat!"));
+        assertEquals(0, manager.getActiveListings());
+        assertTrue(manager.isInCombat());
+    }
+
+    @Test
+    void failureWithNothingPendingChangesNothing() {
+        AhListingManager manager = full();
+        assertFalse(manager.onChatMessage("§cYou cannot fly here!"));
+        assertEquals(18, manager.getActiveListings());
+    }
+
+    @Test
+    void listingsScreenIsTheAuthorityOnSlotCount() {
+        AhListingManager manager = new AhListingManager(18);
+        manager.onListingSent();
+        manager.onListingSent();
+
+        // Ekranda elle konmuş ilanlarla birlikte 7 tane görünüyor
+        manager.syncActiveListings(7);
+        assertEquals(7, manager.getActiveListings());
+        assertTrue(manager.canListMore());
+
+        manager.syncActiveListings(18);
+        assertFalse(manager.canListMore());
+    }
+
+    @Test
     void resetClearsEverything() {
         AhListingManager manager = full();
         manager.resetAll();

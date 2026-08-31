@@ -28,6 +28,15 @@ public class AhListingManager {
             "(?i)\\b(?:cancelled|canceled|removed|collected|reclaimed|expired)\\b|iptal|geri çekildi"
     );
 
+    /**
+     * /ah sell reddedildiğinde slot harcanmamıştır. Gönderimden hemen sonraki
+     * kısa pencerede geniş eşleşmek güvenlidir: yanlış pozitifin bedeli bir
+     * fazla deneme, sunucu da onu "too many" ile geri çevirir.
+     */
+    private static final Pattern FAILURE_PATTERN = Pattern.compile(
+            "(?i)cannot|can't|can not|unable|must be|not allowed|invalid|failed|in the air|havada|yapamazsın|geçersiz"
+    );
+
     private static final Pattern COMBAT_PATTERN = Pattern.compile(
             "(?i)(?:cannot|can't|can not|unable to).{0,40}combat|(?:while|are) in combat|savaşta"
     );
@@ -64,8 +73,11 @@ public class AhListingManager {
         CONFIRMED
     }
 
+    private static final long PENDING_WINDOW_MS = 3000;
+
     private int maxSlots = 18;
     private int activeListings = 0;
+    private long pendingSince = 0;
     private boolean isLimitReached = false;
     private long combatUntil = 0; // Savaş süresi koruması
     private long totalEarned = 0;
@@ -109,6 +121,34 @@ public class AhListingManager {
         }
     }
 
+    /** Slotu şimdilik ayırır; sunucu reddederse geri alınır. */
+    public synchronized void onListingSent() {
+        onListingAttempt();
+        this.pendingSince = System.currentTimeMillis();
+        this.currentState = State.WAITING_CONFIRMATION;
+    }
+
+    private boolean pending() {
+        return pendingSince > 0 && System.currentTimeMillis() - pendingSince < PENDING_WINDOW_MS;
+    }
+
+    /** Reddedilen ilanı sayaçtan düşer. Pencere geçtiyse ilan gerçekten girmiştir. */
+    private boolean releasePending() {
+        if (!pending()) return false;
+        pendingSince = 0;
+        if (activeListings > 0) activeListings--;
+        this.isLimitReached = false;
+        this.currentState = State.IDLE;
+        return true;
+    }
+
+    /** /ah listings ekranından okunan gerçek ilan sayısı. */
+    public synchronized void syncActiveListings(int actual) {
+        this.pendingSince = 0;
+        setActiveListings(actual);
+        this.currentState = State.IDLE;
+    }
+
     public synchronized void offerTask(ListingTask task) {
         if (task != null) {
             queue.offer(task);
@@ -145,6 +185,7 @@ public class AhListingManager {
 
         if (COMBAT_PATTERN.matcher(cleanMessage).find()) {
             this.combatUntil = System.currentTimeMillis() + 20000;
+            releasePending();
             LOGGER.warn("[SAVAS KORUMASI] Savaşta olunduğu tespit edildi. 20 saniye işlem durduruldu.");
             return true;
         }
@@ -152,8 +193,14 @@ public class AhListingManager {
         if (LIMIT_PATTERN.matcher(cleanMessage).find()) {
             this.activeListings = this.maxSlots;
             this.isLimitReached = true;
+            this.pendingSince = 0;
             this.currentState = State.IDLE;
             LOGGER.warn("[LIMIT DOLU] Sunucu ilan sınırına ulaşıldı ({}/{}). Yeni satış bekleniyor.", activeListings, maxSlots);
+            return true;
+        }
+
+        if (FAILURE_PATTERN.matcher(cleanMessage).find() && releasePending()) {
+            LOGGER.info("[ILAN REDDEDILDI] Sunucu satisi kabul etmedi, slot geri alindi: {}/{}", activeListings, maxSlots);
             return true;
         }
 
@@ -221,6 +268,7 @@ public class AhListingManager {
     public void setCurrentState(State state) { this.currentState = state; }
     public void resetAll() {
         this.activeListings = 0;
+        this.pendingSince = 0;
         this.isLimitReached = false;
         this.combatUntil = 0;
         this.currentState = State.IDLE;

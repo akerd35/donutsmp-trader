@@ -129,8 +129,9 @@ macOS'ta:
 
 | Konu | Durum |
 | :--- | :--- |
-| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/trader active <sayı>` ile elle eşitleyin. |
-| **`AutoRelister`** | Fiyat kırılmasını tespit eder ve loglar, ancak `/ah listings` menüsünden ilanı **otomatik iptal edip yeniden listelemez**. Açık `/ah` menüsünde rakip fiyatı okunup satış hedefi düşürülür. |
+| **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` bunu tespit edip logluyor; `/ah listings` menüsünden iptal edip yeniden koyma akışı yazılmadı. |
+| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/ah listings` menüsünü açmak sayacı gerçekle eşitler. |
+| **`/ah listings` başlık eşleşmesi** | Ekran, başlığında `your listings` / `my listings` / `ilanlar` geçtiğinde tanınır. Sunucudaki başlık farklıysa senkron çalışmaz — `/trader active <sayı>` ile elle eşitleyin. |
 | **Onay ekranı** | `findConfirmButtonSlot` yazıldı ama akışa bağlı değil; `/ah sell` sonrası onay penceresini elle kapatmanız gerekebilir. |
 
 ## 👥 Geliştiriciler & Katkıda Bulunanlar

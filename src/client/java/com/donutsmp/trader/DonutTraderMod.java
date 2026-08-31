@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 public class DonutTraderMod implements ClientModInitializer {
     public static final String MOD_ID = "donutsmp_trader";
@@ -38,6 +39,11 @@ public class DonutTraderMod implements ClientModInitializer {
 
     private static final long COMMAND_COOLDOWN_MS = 1400; // Sunucu antispam eşiği
     private static final long SCAN_PRICE_TTL_MS = 5 * 60 * 1000L;
+
+    /** Kendi ilanlarımızın ekranı; genel /ah tarama ekranından ayırt edilmeli. */
+    private static final Pattern MY_LISTINGS_TITLE = Pattern.compile(
+            "(?i)your listings|my listings|your auctions|ilanlar"
+    );
 
     private static DonutTraderMod INSTANCE;
 
@@ -100,7 +106,11 @@ public class DonutTraderMod implements ClientModInitializer {
 
         try {
             ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-                if (client.player != null && screen instanceof AbstractContainerScreen<?> containerScreen) {
+                if (client.player == null || !(screen instanceof AbstractContainerScreen<?> containerScreen)) return;
+                String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
+                if (MY_LISTINGS_TITLE.matcher(title).find()) {
+                    syncListingsFromScreen(client, containerScreen.getMenu());
+                } else {
                     scanMarketScreen(client, containerScreen.getMenu());
                 }
             });
@@ -116,6 +126,37 @@ public class DonutTraderMod implements ClientModInitializer {
 
         TraderHud.register();
         startBackgroundService();
+    }
+
+    /**
+     * 18 slot limiti hesabımızın tamamı içindir, sadece traderın koyduklarının
+     * değil. Elle koyduğunuz bir ilan da slot yer; sayacı yalnızca kendi
+     * gönderdiklerimizden yürütmek boş olmayan slotu boş gösterir.
+     */
+    private void syncListingsFromScreen(Minecraft client, AbstractContainerMenu menu) {
+        if (menu == null) return;
+
+        int containerSlots = Math.max(0, menu.slots.size() - 36);
+        int counted = 0;
+        for (int i = 0; i < containerSlots; i++) {
+            if (hasPricedLore(menu.slots.get(i).getItem())) counted++;
+        }
+
+        listingManager.syncActiveListings(counted);
+        client.player.sendSystemMessage(Component.literal(String.format(
+                "§6[DonutTrader] §eAktif ilanlarınız okundu: §f%d/%d",
+                listingManager.getActiveListings(), listingManager.getMaxSlots())));
+    }
+
+    /** Dekoratif cam panellerin lore'unda fiyat olmaz; ilanların olur. */
+    private static boolean hasPricedLore(ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        ItemLore lore = stack.get(DataComponents.LORE);
+        if (lore == null) return false;
+        for (Component line : lore.lines()) {
+            if (AhPriceParser.parsePrice(line.getString()) > 0) return true;
+        }
+        return false;
     }
 
     /** Açılan /ah menüsündeki rakip fiyatlarını lore üzerinden okur. */
@@ -145,9 +186,11 @@ public class DonutTraderMod implements ClientModInitializer {
         if (lowestCompetitor == Double.MAX_VALUE || lowestCompetitor <= config.minPriceFloor) return;
 
         double newOptimal = Math.max(config.minPriceFloor, lowestCompetitor - 1.0);
-        if (newOptimal < effectivePrice()) {
-            scanPrice = newOptimal;
-            scanPriceAt = System.currentTimeMillis();
+        double previous = effectivePrice();
+        scanPrice = newOptimal;
+        scanPriceAt = System.currentTimeMillis();
+
+        if (Math.abs(newOptimal - previous) >= 1.0) {
             client.player.sendSystemMessage(Component.literal(String.format(
                     "§6[DonutTrader] §aPiyasa tarandı! En ucuz rakip: §e$%,.0f §a-> Yeni satış hedefimiz: §6$%,.0f",
                     lowestCompetitor, newOptimal)));
@@ -182,6 +225,12 @@ public class DonutTraderMod implements ClientModInitializer {
 
         if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
         if (!listingManager.canListMore()) return;
+
+        // Sunucu havadayken /ah sell kabul etmiyor; gondermeden once yere in.
+        if (!client.player.onGround()) {
+            warn(client, now, "§6[DonutTrader] §eHavadasınız, satış için yere inilmesi bekleniyor.");
+            return;
+        }
 
         String target = DonutAuctionClient.normalizeItemName(config.targetItem);
         int selected = client.player.getInventory().getSelectedSlot();
@@ -219,7 +268,7 @@ public class DonutTraderMod implements ClientModInitializer {
         }
 
         client.player.connection.sendCommand("ah sell " + sellPrice);
-        listingManager.onListingAttempt();
+        listingManager.onListingSent();
         lastCommandTime = now;
         lastActionTime = now;
         LOGGER.info("[DonutSMP Trader] /ah sell {} gonderildi! (Aktif: {}/{})",
@@ -260,18 +309,20 @@ public class DonutTraderMod implements ClientModInitializer {
 
     /**
      * Auto-undercut kapalıyken /trader price ile verilen fiyat geçerlidir.
-     * Açıkken oyun içi tarama API'yi ezer: menüde görülen rakip fiyatı
-     * canlıdır, API cache'i birkaç dakika geride kalabilir.
+     * Açıkken taze tarama API'nin YERİNE geçer, ucuzu seçilmez: menüde görülen
+     * fiyat canlıdır, ikisinin küçüğünü almak piyasa yükselince bizi eski
+     * API fiyatına kilitler ve ucuza sattırır.
      */
     public double effectivePrice() {
         if (!config.autoUndercut) {
             return Math.max(config.fallbackPrice, config.minPriceFloor);
         }
-        double price = apiPrice;
-        if (scanPrice > 0 && System.currentTimeMillis() - scanPriceAt < SCAN_PRICE_TTL_MS) {
-            price = Math.min(price, scanPrice);
-        }
+        double price = scanFresh() ? scanPrice : apiPrice;
         return Math.max(price, config.minPriceFloor);
+    }
+
+    private boolean scanFresh() {
+        return scanPrice > 0 && System.currentTimeMillis() - scanPriceAt < SCAN_PRICE_TTL_MS;
     }
 
     /** Hedef ya da lot değişince eski taramanın fiyatı artık bu eşyaya ait değildir. */
