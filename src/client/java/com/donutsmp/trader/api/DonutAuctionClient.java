@@ -2,6 +2,7 @@ package com.donutsmp.trader.api;
 
 import com.donutsmp.trader.api.model.ItemPrice;
 import com.donutsmp.trader.api.model.TickerItem;
+import com.donutsmp.trader.market.Undercut;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import org.slf4j.Logger;
@@ -122,7 +123,8 @@ public class DonutAuctionClient {
         return tickerCache.get(clean);
     }
 
-    public double calculateOptimalSellPrice(String itemName, int lotSize, double defaultFallbackPrice, double minimumPriceFloor) {
+    public double calculateOptimalSellPrice(String itemName, int lotSize, double defaultFallbackPrice,
+                                            double minimumPriceFloor, double undercutPercent) {
         TickerItem ticker = getCheapestListing(itemName);
         if (ticker == null || ticker.getListingPrice() <= 0) {
             return Math.max(defaultFallbackPrice, minimumPriceFloor);
@@ -135,11 +137,6 @@ public class DonutAuctionClient {
             competitorPrice = ticker.getListingPrice();
         }
 
-        if (competitorPrice <= minimumPriceFloor) {
-            return minimumPriceFloor;
-        }
-
-        double undercut = competitorPrice - 1.0;
-        return Math.max(undercut, minimumPriceFloor);
+        return Undercut.target(competitorPrice, undercutPercent, minimumPriceFloor);
     }
 }

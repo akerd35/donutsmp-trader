@@ -30,7 +30,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 
 ### 2. 📡 Canlı Piyasa API'si & Canlı In-Game Lore Tarayıcısı
 * **Web API (`donut.auction/v2/`):** 45 ana ürünün (Totem, Su Kovası, Shulker vb.) anlık en ucuz fiyatlarını ve likiditelerini çeker.
-* **In-Game AH Tarayıcısı:** `/ah` menüsü açıldığında rakiplerin fiyatlarını lore üzerinden tarar ve otomatik olarak rakipten **1$ ucuza (-$1 Auto-Undercut)** fiyat belirler.
+* **In-Game AH Tarayıcısı:** `/ah` menüsü açıldığında rakiplerin fiyatlarını lore üzerinden tarar ve otomatik olarak rakibin **%0.1 altına** fiyat belirler *(ayarlanabilir; en az 1$ altına iner)*.
 * **Taban Fiyat Koruması (`minPriceFloor`):** Belirlediğiniz taban fiyatın altına asla inmez (zararına satış engeli).
 
 ### 3. 🤖 Tam Otonom & Sunucu Tabanlı 18-Slot Yönetimi
@@ -61,6 +61,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader reset`** | `[TAB]` | İlan sayacını sıfırlar |
 | **`/trader floor <fiyat>`** | Sayı | Taban fiyat koruması koyar *(Zararına satış engeli)* |
 | **`/trader undercut on\|off`** | `[TAB]` | Piyasayı takip et *(varsayılan)* ya da `/trader price` fiyatını sabitle |
+| **`/trader undercut <yüzde>`** | Sayı | Rakibin ne kadar altına inileceği *(Varsayılan: %0.1 — rakip 10.000 ise 9.990)* |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
 | **`/trader update`** | `[TAB]` | GitHub'daki son sürümü indirir *(yeniden başlatınca uygulanır)* |
 | **`/trader reload`** | `[TAB]` | Ayar dosyasını diskten yeniden okur |
@@ -135,7 +136,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### Testler
 ```bash
-./gradlew test       # 30 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+./gradlew test       # 34 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
 ```
 
 ---

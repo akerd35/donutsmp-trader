@@ -8,6 +8,7 @@ import com.donutsmp.trader.gui.TraderHud;
 import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.AutoRelister;
+import com.donutsmp.trader.market.Undercut;
 import com.donutsmp.trader.update.Updater;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
@@ -72,7 +73,7 @@ public class DonutTraderMod implements ClientModInitializer {
         this.config.save();
         this.apiClient = new DonutAuctionClient();
         this.listingManager = new AhListingManager(config.maxSlots);
-        this.autoRelister = new AutoRelister(apiClient, config.minPriceFloor, 100.0);
+        this.autoRelister = new AutoRelister(apiClient, config.minPriceFloor, config.undercutPercent);
         this.apiPrice = config.fallbackPrice;
 
         LOGGER.info("[DonutSMP Trader] Mod baslatiliyor... Hedef: {} (Lot: {}x, Limit: {} slot)",
@@ -193,7 +194,7 @@ public class DonutTraderMod implements ClientModInitializer {
 
         if (lowestCompetitor == Double.MAX_VALUE || lowestCompetitor <= config.minPriceFloor) return;
 
-        double newOptimal = Math.max(config.minPriceFloor, lowestCompetitor - 1.0);
+        double newOptimal = Undercut.target(lowestCompetitor, config.undercutPercent, config.minPriceFloor);
         double previous = effectivePrice();
         scanPrice = newOptimal;
         scanPriceAt = System.currentTimeMillis();
@@ -308,7 +309,8 @@ public class DonutTraderMod implements ClientModInitializer {
                     config.targetItem,
                     config.lotSize,
                     config.fallbackPrice,
-                    config.minPriceFloor
+                    config.minPriceFloor,
+                    config.undercutPercent
             );
         } catch (Exception e) {
             LOGGER.error("Market logic tick hatasi: {}", e.getMessage());

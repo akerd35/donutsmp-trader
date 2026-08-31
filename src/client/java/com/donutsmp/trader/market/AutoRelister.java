@@ -63,16 +63,16 @@ public class AutoRelister {
 
     private final DonutAuctionClient apiClient;
     private double minPriceFloor = 5000.0; // Taban fiyat koruması (Zararına satış engeli)
-    private double minPriceDiffToRelist = 100.0; // En az 100$ fark varsa relist yap
+    private double undercutPercent = 0.1;
 
     public AutoRelister(DonutAuctionClient apiClient) {
         this.apiClient = apiClient;
     }
 
-    public AutoRelister(DonutAuctionClient apiClient, double minPriceFloor, double minPriceDiffToRelist) {
+    public AutoRelister(DonutAuctionClient apiClient, double minPriceFloor, double undercutPercent) {
         this.apiClient = apiClient;
         this.minPriceFloor = minPriceFloor;
-        this.minPriceDiffToRelist = minPriceDiffToRelist;
+        this.undercutPercent = undercutPercent;
     }
 
     public List<RelistDecision> evaluateListings(List<ActiveListing> myActiveListings) {
@@ -90,10 +90,9 @@ public class AutoRelister {
             double competitorUnitPrice = ticker.getUnitPrice() > 0 ? ticker.getUnitPrice() : ticker.getListingPrice();
             double myUnitPrice = listing.listedPrice / Math.max(1, listing.count);
 
-            // Eğer bizim birim fiyatımız rakibin fiyatından daha yüksekse (Fiyatımız kırılmışsa)
-            if (myUnitPrice > competitorUnitPrice + minPriceDiffToRelist) {
-                // Taban fiyatın altındaysa tabana kadar çek, tabanın da altındaysa zarara girme
-                double targetUnitPrice = Math.max(competitorUnitPrice - 1.0, minPriceFloor);
+            // Fiyatımız kırılmışsa rakibin altına in
+            if (myUnitPrice > competitorUnitPrice) {
+                double targetUnitPrice = Undercut.target(competitorUnitPrice, undercutPercent, minPriceFloor);
 
                 if (targetUnitPrice < myUnitPrice) {
                     listing.isUndercut = true;
@@ -130,5 +129,6 @@ public class AutoRelister {
     }
 
     public double getMinPriceFloor() { return minPriceFloor; }
+    public void setUndercutPercent(double percent) { this.undercutPercent = percent; }
     public void setMinPriceFloor(double minPriceFloor) { this.minPriceFloor = minPriceFloor; }
 }

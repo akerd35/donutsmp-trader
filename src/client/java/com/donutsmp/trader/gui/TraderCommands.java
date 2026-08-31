@@ -3,6 +3,7 @@ package com.donutsmp.trader.gui;
 import com.donutsmp.trader.DonutTraderMod;
 import com.donutsmp.trader.config.TraderConfig;
 import com.donutsmp.trader.market.AhListingManager;
+import com.donutsmp.trader.market.Undercut;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -88,7 +89,9 @@ public class TraderCommands {
                                 .executes(context -> setFloor(context.getSource(), DoubleArgumentType.getDouble(context, "price")))))
                 .then(ClientCommands.literal("undercut")
                         .then(ClientCommands.literal("on").executes(context -> setUndercut(context.getSource(), true)))
-                        .then(ClientCommands.literal("off").executes(context -> setUndercut(context.getSource(), false))))
+                        .then(ClientCommands.literal("off").executes(context -> setUndercut(context.getSource(), false)))
+                        .then(ClientCommands.argument("percent", DoubleArgumentType.doubleArg(0.0, 50.0))
+                                .executes(context -> setUndercutPercent(context.getSource(), DoubleArgumentType.getDouble(context, "percent")))))
                 .then(ClientCommands.literal("sim")
                         .then(ClientCommands.literal("on").executes(context -> setSimulation(context.getSource(), true)))
                         .then(ClientCommands.literal("off").executes(context -> setSimulation(context.getSource(), false))))
@@ -119,6 +122,7 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader slots <sayı> §7-> Slot limitinizi ayarlar §8(Varsayılan: 18)"));
         source.sendFeedback(Component.literal("  §f/trader floor <fiyat> §7-> Taban fiyat koruması §8(Zararına satış engeli)"));
         source.sendFeedback(Component.literal("  §f/trader undercut on|off §7-> Piyasayı takip et ya da sabit fiyat kullan"));
+        source.sendFeedback(Component.literal("  §f/trader undercut <yüzde> §7-> Rakibin ne kadar altına inileceği §8(Varsayılan: %0.1)"));
         source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
         source.sendFeedback(Component.literal("  §f/trader update §7-> GitHub'daki son sürümü indirir §8(yeniden başlatınca uygulanır)"));
         source.sendFeedback(Component.literal("  §f/trader status §7-> Anlık durumu, aktif slotları ve toplam kazancı gösterir"));
@@ -137,7 +141,7 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("§eDurum: " + (config.enabled ? "§a[AKTİF]" : "§c[PASİF]") + " §7(Kısayol Tuşu: '" + keyName + "')"));
         source.sendFeedback(Component.literal("§eHedef Eşya: §f" + config.targetItem + " §7(Lot Boyutu: §f" + config.lotSize + "x§7)"));
         source.sendFeedback(Component.literal("§eSatış Fiyatı: §a$" + String.format("%,.0f", recPrice) + " §7| §eTaban Fiyat: §a$" + String.format("%,.0f", config.minPriceFloor)));
-        source.sendFeedback(Component.literal("§eAuto-undercut: " + (config.autoUndercut ? "§aAÇIK" : "§cKAPALI") + (config.simulationMode ? " §7| §eSimülasyon: §eAÇIK" : "")));
+        source.sendFeedback(Component.literal("§eAuto-undercut: " + (config.autoUndercut ? String.format("§aAÇIK §7(-%%%.2f)", config.undercutPercent) : "§cKAPALI") + (config.simulationMode ? " §7| §eSimülasyon: §eAÇIK" : "")));
         source.sendFeedback(Component.literal("§eMaksimum Slot: §f" + config.maxSlots));
         if (lm != null) {
             source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots() + " §7| §eKuyruk: §f" + lm.getQueueSize()));
@@ -173,6 +177,23 @@ public class TraderCommands {
         config.autoUndercut = enabled;
         config.save();
         source.sendFeedback(Component.literal("§6[DonutTrader] §eAuto-undercut: " + (enabled ? "§aAÇIK" : "§cKAPALI §7(sabit fiyat: $" + String.format("%,.0f", config.fallbackPrice) + ")")));
+        return 1;
+    }
+
+    private static int setUndercutPercent(FabricClientCommandSource source, double percent) {
+        TraderConfig config = TraderConfig.get();
+        config.undercutPercent = Math.max(0.0, Math.min(50.0, percent));
+        config.autoUndercut = true;
+        config.save();
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) {
+            mod.getAutoRelister().setUndercutPercent(config.undercutPercent);
+            mod.invalidateScan();
+            mod.tickMarketLogic();
+        }
+        source.sendFeedback(Component.literal(String.format(
+                "§6[DonutTrader] §eUndercut farkı: §a%%%.2f §7(rakip $10.000 ise bizim fiyat $%,.0f)",
+                config.undercutPercent, Undercut.target(10000.0, config.undercutPercent, 0.0))));
         return 1;
     }
 
