@@ -4,6 +4,7 @@ import com.donutsmp.trader.api.DonutAuctionClient;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
@@ -14,6 +15,18 @@ public class InventoryActionHelper {
     public static final int BACKPACK_MENU_START = 9;
     public static final int HOTBAR_MENU_START = 36;
     public static final int HOTBAR_MENU_END = 44;
+
+    /**
+     * Böyle bir eşya var mı?
+     *
+     * "/trader fullauto off" gibi bir yazım hedefi "off" yapıyor ve mod
+     * envanterde bulamadığı bir şeyi sonsuza kadar arıyordu.
+     */
+    public static boolean itemExists(String name) {
+        if (name == null || name.isBlank()) return false;
+        Identifier id = Identifier.tryParse(DonutAuctionClient.normalizeItemName(name));
+        return id != null && BuiltInRegistries.ITEM.containsKey(id);
+    }
 
     public static String idOf(ItemStack stack) {
         if (stack == null || stack.isEmpty()) return "";

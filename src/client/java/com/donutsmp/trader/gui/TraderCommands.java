@@ -2,6 +2,7 @@ package com.donutsmp.trader.gui;
 
 import com.donutsmp.trader.DonutTraderMod;
 import com.donutsmp.trader.config.TraderConfig;
+import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.Undercut;
 import com.mojang.brigadier.CommandDispatcher;
@@ -69,6 +70,7 @@ public class TraderCommands {
                                                 DoubleArgumentType.getDouble(context, "sellAt"))))))
                 .then(ClientCommands.literal("fullauto")
                         .executes(context -> fullAuto(context.getSource(), null))
+                        .then(ClientCommands.literal("off").executes(context -> setEnabled(context.getSource(), false)))
                         .then(ClientCommands.argument("item", StringArgumentType.word())
                                 .suggests(ITEM_SUGGESTIONS)
                                 .executes(context -> fullAuto(context.getSource(), StringArgumentType.getString(context, "item")))))
@@ -123,9 +125,19 @@ public class TraderCommands {
     }
 
     /** Tek komutla çalışır hâle getirir; geri kalan ayarlar varsayılanıyla kalır. */
+    /** Adı olmayan bir eşya hedef yapılırsa mod hiç satmaz, sebebini de söylemez. */
+    private static boolean checkItem(FabricClientCommandSource source, String name) {
+        if (InventoryActionHelper.itemExists(name)) return true;
+        source.sendFeedback(Component.literal("§6[DonutTrader] §cBöyle bir eşya yok: §f" + name));
+        source.sendFeedback(Component.literal("§7Minecraft eşya adı bekleniyor §8(ladder, water_bucket, totem_of_undying)"));
+        source.sendFeedback(Component.literal("§7Kapatmak istediyseniz: §f/trader off"));
+        return false;
+    }
+
     private static int fullAuto(FabricClientCommandSource source, String item) {
         TraderConfig config = TraderConfig.get();
         if (item != null && !item.isBlank()) {
+            if (!checkItem(source, item)) return 0;
             config.targetItem = item.toLowerCase().replace("minecraft:", "").trim();
         }
         config.autoUndercut = true;
@@ -364,6 +376,7 @@ public class TraderCommands {
 
     private static int setItem(FabricClientCommandSource source, String itemName) {
         TraderConfig config = TraderConfig.get();
+        if (!checkItem(source, itemName)) return 0;
         config.targetItem = itemName.toLowerCase().replace("minecraft:", "").trim();
         config.save();
         DonutTraderMod mod = DonutTraderMod.getInstance();

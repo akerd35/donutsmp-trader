@@ -467,6 +467,12 @@ public class DonutTraderMod implements ClientModInitializer {
         }
 
         String target = DonutAuctionClient.normalizeItemName(config.targetItem);
+        if (!InventoryActionHelper.itemExists(target)) {
+            warn(client, now, "§6[DonutTrader] §cHedef eşya geçersiz: §f" + config.targetItem
+                    + " §c— düzeltmek için: §f/trader item <eşya>");
+            return;
+        }
+
         int selected = client.player.getInventory().getSelectedSlot();
         ItemStack held = client.player.getInventory().getSelectedItem();
         boolean handReady = InventoryActionHelper.idOf(held).equals(target) && held.getCount() == config.lotSize;
