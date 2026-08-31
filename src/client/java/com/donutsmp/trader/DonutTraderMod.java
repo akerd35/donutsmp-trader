@@ -71,6 +71,7 @@ public class DonutTraderMod implements ClientModInitializer {
     private boolean screenHandled = false;
     private long marketRequestedAt = 0;
     private long nextMarketScanAt = 0;
+    private int marketFailures = 0;
     private int lastSyncedListings = -1;
     private long verifyAt = 0;
     private int verifySlot = -1;
@@ -171,8 +172,36 @@ public class DonutTraderMod implements ClientModInitializer {
             scanMarketScreen(client, containerScreen.getMenu());
             if (requested) {
                 marketRequestedAt = 0;
+                marketFailures = 0;
                 client.player.closeContainer();
             }
+        }
+    }
+
+    /**
+     * Komut yanlışsa sunucuya boşuna komut yağdırmayı bırak.
+     *
+     * Arama komutu sunucuya göre değişiyor; tahmin tutmazsa hiçbir menü
+     * açılmaz. Üç denemeden sonra susup oyuncuya söylemek, doksan saniyede bir
+     * geçersiz komut göndermeye devam etmekten iyidir.
+     */
+    private void onMarketRequestFailed(Minecraft client) {
+        marketFailures++;
+        LOGGER.warn("[DonutSMP Trader] Piyasa ekrani acilmadi ({}. deneme): /{}",
+                marketFailures, String.format(config.marketCommand, config.targetItem));
+
+        if (marketFailures < 3) return;
+
+        config.autoScan = false;
+        config.save();
+        marketFailures = 0;
+        if (client.player != null) {
+            client.player.sendSystemMessage(Component.literal(
+                    "§6[DonutTrader] §cPiyasa araması çalışmadı, otomatik tarama kapatıldı."));
+            client.player.sendSystemMessage(Component.literal(
+                    "§7Denenen komut: §f/" + String.format(config.marketCommand, config.targetItem)));
+            client.player.sendSystemMessage(Component.literal(
+                    "§7Doğru komutu §fconfig/donutsmp_trader.json §7içindeki §fmarketCommand §7alanına yazıp §f/trader reload §7deyin."));
         }
     }
 
@@ -285,6 +314,11 @@ public class DonutTraderMod implements ClientModInitializer {
         screenTicks = 0;
         screenHandled = false;
         if (client.isPaused()) return;
+
+        if (marketRequestedAt > 0 && System.currentTimeMillis() - marketRequestedAt >= MARKET_REQUEST_TIMEOUT_MS) {
+            marketRequestedAt = 0;
+            onMarketRequestFailed(client);
+        }
         if (!config.enabled || client.player == null || client.getConnection() == null) return;
 
         // Sanal tıklamalar oyuncunun kendi envanter menüsüne gider; başka bir
