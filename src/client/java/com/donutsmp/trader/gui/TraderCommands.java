@@ -59,15 +59,6 @@ public class TraderCommands {
     private static void registerBase(CommandDispatcher<FabricClientCommandSource> dispatcher, String rootName) {
         dispatcher.register(ClientCommands.literal(rootName)
                 .executes(context -> showStatus(context.getSource()))
-                .then(ClientCommands.literal("autoplus")
-                        .executes(context -> autoPlusStatus(context.getSource()))
-                        .then(ClientCommands.literal("arm").executes(context -> armAutoPlus(context.getSource(), true)))
-                        .then(ClientCommands.literal("off").executes(context -> stopAutoPlus(context.getSource())))
-                        .then(ClientCommands.argument("buyBelow", DoubleArgumentType.doubleArg(1.0))
-                                .then(ClientCommands.argument("sellAt", DoubleArgumentType.doubleArg(1.0))
-                                        .executes(context -> setAutoPlus(context.getSource(),
-                                                DoubleArgumentType.getDouble(context, "buyBelow"),
-                                                DoubleArgumentType.getDouble(context, "sellAt"))))))
                 .then(ClientCommands.literal("fullauto")
                         .executes(context -> fullAuto(context.getSource(), null))
                         .then(ClientCommands.literal("off").executes(context -> setEnabled(context.getSource(), false)))
@@ -165,81 +156,6 @@ public class TraderCommands {
             source.sendFeedback(Component.literal("§c§lUYARI: §cTaban fiyat yok. Zararına satmamak için: §f/trader floor <fiyat>"));
         }
 
-        // Autoplus ayarlari kalicidir: fiyati sabitledigini soylemezsek
-        // fullauto'nun undercut yaptigi sanilir.
-        if (config.flipEnabled) {
-            source.sendFeedback(Component.literal(String.format(
-                    "§e§lNOT: §eAutoplus hâlâ açık — satış fiyatı §f$%,.0f §esabit, undercut devre dışı. %s",
-                    config.flipSellAt, config.flipArmed ? "§c§lSATIN ALMA SİLAHLI." : "§7(kuru)")));
-            source.sendFeedback(Component.literal("§7Sadece normal satış istiyorsanız: §f/trader autoplus off"));
-        }
-        return 1;
-    }
-
-    private static int setAutoPlus(FabricClientCommandSource source, double buyBelow, double sellAt) {
-        TraderConfig config = TraderConfig.get();
-        if (sellAt <= buyBelow) {
-            source.sendFeedback(Component.literal("§6[DonutTrader] §cSatış fiyatı alış üst sınırından yüksek olmalı."));
-            return 0;
-        }
-
-        config.flipBuyBelow = buyBelow;
-        config.flipSellAt = sellAt;
-        config.flipEnabled = true;
-        config.flipArmed = false; // her ayarlamada güvenliye döner
-        config.autoScan = true;
-        config.enabled = true;
-        config.save();
-
-        DonutTraderMod mod = DonutTraderMod.getInstance();
-        if (mod != null) mod.resetFlipSpend();
-
-        source.sendFeedback(Component.literal("§6§l[DonutTrader] §e§lAUTOPLUS"));
-        source.sendFeedback(Component.literal(String.format(
-                "§7Şu fiyatın altındakileri al: §f$%,.0f §7| Asma fiyatı: §f$%,.0f §7| Bütçe: §f$%,.0f",
-                config.flipBuyBelow, config.flipSellAt, config.flipBudget)));
-        source.sendFeedback(Component.literal("§e§lŞU AN KURU ÇALIŞIYOR §7— ne alacağını söyler, tıklamaz."));
-        source.sendFeedback(Component.literal("§7Ne bulduğunu görün, doğruysa: §f/trader autoplus arm"));
-        return 1;
-    }
-
-    private static int armAutoPlus(FabricClientCommandSource source, boolean armed) {
-        TraderConfig config = TraderConfig.get();
-        if (!config.flipEnabled || config.flipSellAt <= 0) {
-            source.sendFeedback(Component.literal("§6[DonutTrader] §cÖnce: §f/trader autoplus <alış-üst> <satış>"));
-            return 0;
-        }
-        config.flipArmed = armed;
-        config.save();
-        source.sendFeedback(Component.literal(armed
-                ? "§6[DonutTrader] §c§lAUTOPLUS SİLAHLI §7— artık gerçekten satın alacak. Bütçe: §f$" + String.format("%,.0f", config.flipBudget)
-                : "§6[DonutTrader] §eAutoplus kuru moda alındı."));
-        return 1;
-    }
-
-    private static int stopAutoPlus(FabricClientCommandSource source) {
-        TraderConfig config = TraderConfig.get();
-        config.flipEnabled = false;
-        config.flipArmed = false;
-        config.save();
-        source.sendFeedback(Component.literal("§6[DonutTrader] §eAutoplus kapatıldı."));
-        return 1;
-    }
-
-    private static int autoPlusStatus(FabricClientCommandSource source) {
-        TraderConfig config = TraderConfig.get();
-        DonutTraderMod mod = DonutTraderMod.getInstance();
-        if (!config.flipEnabled) {
-            source.sendFeedback(Component.literal("§6[DonutTrader] §eAutoplus kapalı. Açmak için: §f/trader autoplus 10000 20000"));
-            return 1;
-        }
-        source.sendFeedback(Component.literal(String.format(
-                "§6[DonutTrader] §eAutoplus: §f$%,.0f §ealtını al, §f$%,.0f §easma | Durum: %s",
-                config.flipBuyBelow, config.flipSellAt,
-                config.flipArmed ? "§c§lSİLAHLI" : "§e§lKURU")));
-        source.sendFeedback(Component.literal(String.format(
-                "§7Bütçe: §f$%,.0f §7| Harcanan: §f$%,.0f §7| En az kâr: §f$%,.0f",
-                config.flipBudget, mod != null ? mod.getFlipSpent() : 0.0, config.flipMinMargin)));
         return 1;
     }
 
@@ -255,7 +171,6 @@ public class TraderCommands {
         source.sendFeedback(Component.literal(""));
         source.sendFeedback(Component.literal("§e§l2. Tek Komutla Başlatma:"));
         source.sendFeedback(Component.literal("  §a/trader fullauto <eşya> §7-> Hedefi ayarlar, piyasayı kendisi okur, satmaya başlar"));
-        source.sendFeedback(Component.literal("  §a/trader autoplus <alt> <üst> §7-> Ucuzları alıp pahalıya asar §8(önce kuru çalışır)"));
         source.sendFeedback(Component.literal("  §8Diğer komutlar sadece ince ayar içindir, zorunlu değildir."));
         source.sendFeedback(Component.literal(""));
         source.sendFeedback(Component.literal("§e§l3. Hızlı Kısayollar & Komutlar:"));

@@ -25,6 +25,8 @@ public class TraderConfig {
     public boolean autoUndercut = true;
     public double undercutAmount = 1.0;
     public double undercutPercent = 0.0;
+    /** Bu kadarlık bir fiyat farkı için ilan yenilenmez. */
+    public double minRepriceStep = 10.0;
     public boolean autoScan = true;
     public String marketCommand = "ah search %s";
     public boolean marketCommandFound = false;
@@ -34,14 +36,6 @@ public class TraderConfig {
     public boolean simulationMode = false;
     public boolean dumpScreens = false;
 
-    // autoplus: ucuz ilanları alıp daha pahalıya asma
-    public boolean flipEnabled = false;
-    public double flipBuyBelow = 0.0;
-    public double flipSellAt = 0.0;
-    public double flipBudget = 1_000_000.0;
-    public double flipMinMargin = 1000.0;
-    /** Gerçekten tıklamak için /trader autoplus arm gerekir; para harcayan tek yol budur. */
-    public boolean flipArmed = false;
 
     private static TraderConfig INSTANCE = null;
 
@@ -70,6 +64,7 @@ public class TraderConfig {
         live.autoUndercut = fresh.autoUndercut;
         live.undercutAmount = fresh.undercutAmount;
         live.undercutPercent = fresh.undercutPercent;
+        live.minRepriceStep = fresh.minRepriceStep;
         live.autoScan = fresh.autoScan;
         live.marketCommand = fresh.marketCommand;
         live.marketCommandFound = fresh.marketCommandFound;
@@ -78,12 +73,6 @@ public class TraderConfig {
         live.marketPollSeconds = fresh.marketPollSeconds;
         live.simulationMode = fresh.simulationMode;
         live.dumpScreens = fresh.dumpScreens;
-        live.flipEnabled = fresh.flipEnabled;
-        live.flipBuyBelow = fresh.flipBuyBelow;
-        live.flipSellAt = fresh.flipSellAt;
-        live.flipBudget = fresh.flipBudget;
-        live.flipMinMargin = fresh.flipMinMargin;
-        live.flipArmed = fresh.flipArmed;
         live.clamp();
         return live;
     }
@@ -112,16 +101,12 @@ public class TraderConfig {
         minPriceFloor = Math.max(0.0, minPriceFloor);
         fallbackPrice = Math.max(minPriceFloor, fallbackPrice);
         undercutAmount = Math.max(0.0, undercutAmount);
+        minRepriceStep = Math.max(0.0, minRepriceStep);
         undercutPercent = Math.max(0.0, Math.min(50.0, undercutPercent));
         if (marketCommand == null || marketCommand.isBlank() || !marketCommand.contains("%s")) {
             marketCommand = "ah search %s";
         }
         scanIntervalSeconds = Math.max(3, Math.min(600, scanIntervalSeconds));
-        flipBuyBelow = Math.max(0.0, flipBuyBelow);
-        flipSellAt = Math.max(0.0, flipSellAt);
-        flipBudget = Math.max(0.0, flipBudget);
-        flipMinMargin = Math.max(0.0, flipMinMargin);
-        if (flipSellAt > 0 && flipSellAt <= flipBuyBelow) flipEnabled = false;
         clickDelayMs = Math.max(0, clickDelayMs);
         marketPollSeconds = Math.max(5, marketPollSeconds);
     }
