@@ -107,6 +107,7 @@ public class DonutTraderMod implements ClientModInitializer {
     private long lastApiWarnAt = 0;
     private long lastFlipReportAt = 0;
     private double flipSpent = 0;
+    private boolean boughtThisScan = false;
 
     @Override
     public void onInitializeClient() {
@@ -197,11 +198,14 @@ public class DonutTraderMod implements ClientModInitializer {
         }
 
         if (requested || AhScreens.isMarket(title)) {
+            boughtThisScan = false;
             scanMarketScreen(client, containerScreen.getMenu());
             if (requested) {
                 marketRequestedAt = 0;
                 onMarketCommandWorked(client);
-                client.player.closeContainer();
+                // Alim tikladiysak menuyu kapatmayiz: tiklama bir onay ekrani
+                // acmis olabilir, onu kapatmak alimi iptal eder.
+                if (!boughtThisScan) client.player.closeContainer();
             }
         }
     }
@@ -244,10 +248,10 @@ public class DonutTraderMod implements ClientModInitializer {
      * Tıklamak para harcar, bu yüzden varsayılan olarak yalnızca ne alacağını
      * söyler. Gerçekten satın alması için /trader autoplus arm gerekir.
      */
-    private void handleFlip(Minecraft client, AbstractContainerMenu menu, List<FlipPlanner.Offer> offers) {
+    private boolean handleFlip(Minecraft client, AbstractContainerMenu menu, List<FlipPlanner.Offer> offers) {
         List<FlipPlanner.Buy> picks = FlipPlanner.plan(offers, config.flipBuyBelow, config.flipSellAt,
                 Math.max(0, config.flipBudget - flipSpent), config.flipMinMargin);
-        if (picks.isEmpty()) return;
+        if (picks.isEmpty()) return false;
 
         FlipPlanner.Buy first = picks.get(0);
 
@@ -261,7 +265,7 @@ public class DonutTraderMod implements ClientModInitializer {
                 client.player.sendSystemMessage(Component.literal(
                         "§7Gerçekten alması için: §f/trader autoplus arm"));
             }
-            return;
+            return false;
         }
 
         flipSpent += first.price();
@@ -271,6 +275,7 @@ public class DonutTraderMod implements ClientModInitializer {
         client.player.sendSystemMessage(Component.literal(String.format(
                 "§6[DonutTrader] §aAlındı: §f$%,.0f §7(bütçe: $%,.0f/$%,.0f)",
                 first.price(), flipSpent, config.flipBudget)));
+        return true;
     }
 
     public void resetFlipSpend() {
@@ -382,8 +387,8 @@ public class DonutTraderMod implements ClientModInitializer {
             if (price < lowestCompetitor) lowestCompetitor = price;
         }
 
-        if (config.flipEnabled) {
-            handleFlip(client, menu, offers);
+        if (config.flipEnabled && handleFlip(client, menu, offers)) {
+            boughtThisScan = true;
         }
 
         if (lowestCompetitor == Double.MAX_VALUE) {
