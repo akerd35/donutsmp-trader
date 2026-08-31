@@ -1,0 +1,16 @@
+# Build output
+build/
+bin/
+out/
+target/
+*.class
+
+# IDE & OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Config local overrides
+config/donutsmp_trader.json

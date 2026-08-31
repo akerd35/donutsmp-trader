@@ -1,0 +1,117 @@
+# 🍩 DonutSMP Autonomous Split-Trader Client Mod
+
+[![Minecraft Version](https://img.shields.io/badge/Minecraft-26.2-brightgreen.svg)](https://minecraft.net/)
+[![Fabric Loader](https://img.shields.io/badge/Fabric-0.19.3-blue.svg)](https://fabricmc.net/)
+[![Java Version](https://img.shields.io/badge/Java-25-orange.svg)](https://www.azul.com/downloads/?version=java-25-ea&os=windows)
+[![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
+
+DonutSMP (`donutsmp.net`) sunucusu için geliştirilmiş, canlı piyasa API'si (`donut.auction`) destekli, 18-slot limit optimizasyonlu, tekli/lot bölücülü (**Split-Selling**) ve fiyat kırılma korumalı (**Auto-Undercut / Relist**) tam otonom Fabric istemci (client) modudur.
+
+---
+
+## 🎯 Projenin Amacı ve Ticaret Stratejisi
+
+DonutSMP pazarında oyuncular genellikle acil ihtiyaç duydukları eşyaları (Merdiven, Su Kovası, Totem, End Kristali vb.) 64'lük toplu paketler yerine **1 adet (tekli)** olarak satın alırlar.
+
+* **Toplu Hammadde Maliyeti:** 64 adet Merdiven veya Log craft maliyeti: `~$2.000 - $5.000`
+* **Tekli Satış Değeri:** Pazarda tekli merdiven birim fiyatı: `~$10.000 - $35.000`
+* **Kâr Marjı:** 64 adetlik bir yığından tek tek satıldığında `~$640.000 - $2.200.000` kazanç elde edilir!
+
+Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)** parçalara böler, DonutSMP pazarında **18 slot dolana kadar** arka arkaya satışa koyar, bir eşyanız satıldığı anda chatten algılayıp 1 saniyede yerine yenisini koyar ve rakipleriniz fiyat kırdığında otomatik olarak 1$ altına günceller.
+
+---
+
+## ✨ Temel Özellikler
+
+### 1. ⚡ Sıfır Kayıplı Deterministik Lot Bölücü (`InventorySplitter`)
+* 64'lük eşyaları 3 adımlı sanal tıklama algoritmasıyla (Sol tık al -> Sağ tıkla 1 adet bırak -> Sol tık kalanı iade et) böler.
+* Eşyaların yere düşmesini veya imleçte takılı kalmasını %100 engeller.
+* 64'lük yığının tamamının yanlışlıkla ucuza satılmasını imkansız kılar.
+
+### 2. 📡 Canlı Piyasa API'si & Canlı In-Game Lore Tarayıcısı
+* **Web API (`donut.auction/v2/`):** 45 ana ürünün (Totem, Su Kovası, Shulker vb.) anlık en ucuz fiyatlarını ve likiditelerini çeker.
+* **In-Game AH Tarayıcısı:** `/ah` menüsü açıldığında rakiplerin fiyatlarını lore üzerinden tarar ve otomatik olarak rakipten **1$ ucuza (-$1 Auto-Undercut)** fiyat belirler.
+* **Taban Fiyat Koruması (`minPriceFloor`):** Belirlediğiniz taban fiyatın altına asla inmez (zararına satış engeli).
+
+### 3. 🤖 Tam Otonom & Sunucu Tabanlı 18-Slot Yönetimi
+* Sizin hiçbir menü açmanıza gerek yoktur.
+* 18 slot dolana kadar arka arkaya listeler.
+* DonutSMP'den gelen *"You have too many listed items"* mesajını ilk milisaniyede yakalayıp kilitlenir.
+* Bir eşyanız satıldığında veya siz bir ilanı çektiğinizde sohbetteki bildirimi anında yakalar, slotu boşa çıkarır ve çantanızdaki sıradaki eşyayı satışa koyar.
+
+### 4. 🛡️ Güvenlik & Anti-Spam Korumaları
+* **Savaş Modu Koruması (Combat Tag Guard):** Savaşta olduğunuzda (*"You cannot do this in combat"*) otomatik olarak **20 saniye** duraklar.
+* **İnsan Benzeri Gecikme (1.4s Cooldown):** Sunucu antispam sistemlerine takılmamak için komutlar arasına güvenli bekleme koyar.
+* **Chat / ESC Duraklatma:** Sohbette yazı yazarken veya ESC menüsündeyken mod otomatik olarak durur.
+* **Başlangıç Güvenliği:** Oyuna her girildiğinde güvenlik gereği daima `[PASİF]` başlar.
+
+---
+
+## 🎮 Oyun İçi Komutlar & Kısayollar
+
+| Komut | Tab Desteği | Açıklama |
+| :--- | :--- | :--- |
+| **`K`** veya **`Ğ`** | - | Modu anında Açar / Kapatır *(Minecraft Keybinds menüsünden değiştirilebilir)* |
+| **`/trader on`** / **`/trader off`** | `[TAB]` | Modu başlatır / duraklatır |
+| **`/trader item <eşya>`** | `[TAB]` | Hedef eşyayı değiştirir *(Örn: `ladder`, `water_bucket`, `totem_of_undying`)* |
+| **`/trader price <fiyat>`** | Sayı | Satış fiyatını belirler *(Örn: `/trader price 25000`)* |
+| **`/trader lot <adet>`** | `1..64` | Kaçar kaçar satılacağını ayarlar *(Varsayılan: 1x)* |
+| **`/trader slots <sayı>`** | `1..54` | Maksimum slot limitinizi ayarlar *(Varsayılan: 18)* |
+| **`/trader active <sayı>`** | Sayı | Aktif ilan sayısını eşitler *(Örn: `/trader active 0`)* |
+| **`/trader reset`** | `[TAB]` | İlan sayacını sıfırlar |
+| **`/trader floor <fiyat>`** | Sayı | Taban fiyat koruması koyar *(Zararına satış engeli)* |
+| **`/trader status`** | `[TAB]` | Anlık durumu, aktif slotları ve toplam kasayı gösterir |
+| **`/trader help`** | `[TAB]` | Oyun içi detaylı kullanım rehberini açar |
+
+---
+
+## 🏗️ Mimari ve Proje Yapısı
+
+```text
+com.donutsmp.trader/
+├── DonutTraderMod.java          # Fabric ClientModInitializer & ana yaşam döngüsü
+├── api/
+│   ├── DonutAuctionClient.java  # HTTP Client (donut.auction v2 tickers & prices)
+│   ├── AhPriceParser.java       # In-game lore & tooltip fiyat ayrıştırıcı
+│   └── model/
+│       ├── TickerItem.java      # Canlı pazar DTO
+│       └── ItemPrice.java       # Likidite & 24s satış hacmi DTO
+├── inventory/
+│   ├── InventorySplitter.java   # 3 adımlı sanal lot bölme motoru
+│   └── InventoryActionHelper.java # Minecraft container slot taşıma yardımcısı
+├── market/
+│   ├── AhListingManager.java    # 18-slot limit & chat bildirim yakalayıcı
+│   └── AutoRelister.java        # Fiyat kırılma & yeniden listeleme analizcisi
+├── gui/
+│   ├── TraderCommands.java      # Brigadier komutları ve akıllı Tab tamamlayıcı
+│   └── TraderHud.java           # Canlı HUD arayüzü
+└── config/
+    └── TraderConfig.java        # JSON tabanlı kalıcı ayar sistemi
+```
+
+---
+
+## 📦 Derleme ve Kurulum
+
+### Gereksinimler
+* **Java:** OpenJDK 25 (Azul Zulu 25 veya üstü)
+* **Minecraft:** 26.2 (Fabric Loader 0.19.3)
+* **Fabric API:** 0.158.0+26.2
+
+### Derleme Adımları
+```powershell
+# Projeyi derleyin ve JAR paketini oluşturun:
+.\build.ps1
+```
+Üretilen `build/libs/donutsmp-trader-1.0.0.jar` dosyasını Minecraft `mods` klasörünüze taşıyınız.
+
+---
+
+## 👥 Geliştiriciler & Katkıda Bulunanlar
+* **Burak Amasya** ([@BurakAmasyaa](https://github.com/BurakAmasyaa))
+* **Kaan (akerd35)** ([@akerd35](https://github.com/akerd35))
+
+---
+
+## 📜 Lisans
+Bu proje [MIT](LICENSE) lisansı altında korunmaktadır.
