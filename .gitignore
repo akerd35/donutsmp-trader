@@ -5,6 +5,12 @@ out/
 target/
 *.class
 
+# Node & external
+node_modules/
+split-seller/
+package*.json
+tsconfig.json
+
 # IDE & OS
 .idea/
 *.iml
