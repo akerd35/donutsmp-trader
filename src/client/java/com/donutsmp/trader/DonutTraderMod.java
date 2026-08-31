@@ -19,9 +19,9 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
-import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
@@ -47,6 +47,12 @@ public class DonutTraderMod implements ClientModInitializer {
     /** /ah sell sonrası eşyanın elden gitmesi için tanınan süre. */
     private static final long VERIFY_AFTER_MS = 2000;
 
+    /** Sunucu konteyner içeriğini ekran açıldıktan birkaç tick sonra gönderir. */
+    private static final int SCREEN_SETTLE_TICKS = 10;
+
+    /** Modun kendi açtığı piyasa ekranını beklediği süre. */
+    private static final long MARKET_REQUEST_TIMEOUT_MS = 4000;
+
     private static DonutTraderMod INSTANCE;
 
     private DonutAuctionClient apiClient;
@@ -60,6 +66,12 @@ public class DonutTraderMod implements ClientModInitializer {
     private volatile long scanPriceAt = 0;
 
     private KeyMapping toggleKey;
+    private String screenKey = null;
+    private int screenTicks = 0;
+    private boolean screenHandled = false;
+    private long marketRequestedAt = 0;
+    private long nextMarketScanAt = 0;
+    private int lastSyncedListings = -1;
     private long verifyAt = 0;
     private int verifySlot = -1;
     private int verifyCount = 0;
@@ -110,23 +122,6 @@ public class DonutTraderMod implements ClientModInitializer {
         }
 
         try {
-            ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
-                if (client.player == null || !(screen instanceof AbstractContainerScreen<?> containerScreen)) return;
-                if (config.dumpScreens) {
-                    ScreenDump.capture(screen.getTitle(), containerScreen.getMenu());
-                }
-                String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
-                if (AhScreens.isMyListings(title)) {
-                    syncListingsFromScreen(client, containerScreen.getMenu());
-                } else if (AhScreens.isMarket(title)) {
-                    scanMarketScreen(client, containerScreen.getMenu());
-                }
-            });
-        } catch (Throwable t) {
-            LOGGER.warn("ScreenEvents kaydedilemedi: {}", t.getMessage());
-        }
-
-        try {
             ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
         } catch (Throwable t) {
             LOGGER.warn("ClientTickEvents kaydedilemedi: {}", t.getMessage());
@@ -140,6 +135,62 @@ public class DonutTraderMod implements ClientModInitializer {
 
         TraderHud.register();
         startBackgroundService();
+    }
+
+    /**
+     * Açık konteyner ekranı işlenir; ama hemen değil.
+     *
+     * Sunucu slot içeriğini ekran açıldıktan sonraki paketlerle yolluyor.
+     * Açılış anında taramak boş menü taramaktır — piyasa fiyatı hiç okunmaz,
+     * mod da API'nin eski fiyatına düşer.
+     */
+    private void onContainerOpen(Minecraft client, Screen screen, AbstractContainerScreen<?> containerScreen) {
+        String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
+        if (!title.equals(screenKey)) {
+            screenKey = title;
+            screenTicks = 0;
+            screenHandled = false;
+        }
+
+        if (screenHandled || ++screenTicks < SCREEN_SETTLE_TICKS) return;
+        screenHandled = true;
+
+        if (config.dumpScreens) {
+            ScreenDump.capture(screen.getTitle(), containerScreen.getMenu());
+        }
+
+        boolean requested = marketRequestedAt > 0
+                && System.currentTimeMillis() - marketRequestedAt < MARKET_REQUEST_TIMEOUT_MS;
+
+        if (AhScreens.isMyListings(title)) {
+            syncListingsFromScreen(client, containerScreen.getMenu());
+            return;
+        }
+
+        if (requested || AhScreens.isMarket(title)) {
+            scanMarketScreen(client, containerScreen.getMenu());
+            if (requested) {
+                marketRequestedAt = 0;
+                client.player.closeContainer();
+            }
+        }
+    }
+
+    /**
+     * Piyasa fiyatını modun kendisi sorar.
+     *
+     * Oyuncunun /ah menüsünü elle açmasını beklemek fiyatı API'ye bağımlı
+     * bırakıyordu; API birkaç dakika geride kalınca eşya ucuza gidiyordu.
+     */
+    private void requestMarketScan(Minecraft client, long now) {
+        if (!config.autoScan || !config.autoUndercut) return;
+        if (now < nextMarketScanAt || marketRequestedAt > 0) return;
+        if (scanFresh()) return;
+
+        nextMarketScanAt = now + Math.max(30, config.scanIntervalSeconds) * 1000L;
+        marketRequestedAt = now;
+        client.player.connection.sendCommand(String.format(config.marketCommand, config.targetItem));
+        LOGGER.info("[DonutSMP Trader] Piyasa soruldu: /{}", String.format(config.marketCommand, config.targetItem));
     }
 
     /**
@@ -157,9 +208,12 @@ public class DonutTraderMod implements ClientModInitializer {
         }
 
         listingManager.syncActiveListings(counted);
-        client.player.sendSystemMessage(Component.literal(String.format(
-                "§6[DonutTrader] §eAktif ilanlarınız okundu: §f%d/%d",
-                listingManager.getActiveListings(), listingManager.getMaxSlots())));
+        if (counted != lastSyncedListings) {
+            lastSyncedListings = counted;
+            client.player.sendSystemMessage(Component.literal(String.format(
+                    "§6[DonutTrader] §eAktif ilanlarınız okundu: §f%d/%d",
+                    listingManager.getActiveListings(), listingManager.getMaxSlots())));
+        }
     }
 
     /** Dekoratif cam panellerin lore'unda fiyat olmaz; ilanların olur. */
@@ -219,8 +273,18 @@ public class DonutTraderMod implements ClientModInitializer {
             }
         }
 
-        // Chat, ESC, envanter: bir ekran açıkken mod işlem yapmaz
-        if (client.gui.screen() != null || client.isPaused()) return;
+        Screen screen = client.gui.screen();
+        if (screen != null) {
+            if (screen instanceof AbstractContainerScreen<?> containerScreen) {
+                onContainerOpen(client, screen, containerScreen);
+            }
+            return;
+        }
+
+        screenKey = null;
+        screenTicks = 0;
+        screenHandled = false;
+        if (client.isPaused()) return;
         if (!config.enabled || client.player == null || client.getConnection() == null) return;
 
         // Sanal tıklamalar oyuncunun kendi envanter menüsüne gider; başka bir
@@ -240,6 +304,11 @@ public class DonutTraderMod implements ClientModInitializer {
         if (verifyAt > 0) {
             if (now < verifyAt) return;
             verifyListing(client);
+        }
+
+        if (!scanFresh()) {
+            requestMarketScan(client, now);
+            return;
         }
 
         if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
@@ -373,6 +442,18 @@ public class DonutTraderMod implements ClientModInitializer {
         }
         double price = scanFresh() ? scanPrice : apiPrice;
         return Math.max(price, config.minPriceFloor);
+    }
+
+    /** Fiyatın nereden geldiği; "undercut çalışmıyor" şikayetini teşhis etmek için. */
+    public String priceSource() {
+        if (!config.autoUndercut) {
+            return String.format("sabit fiyat ($%,.0f) — /trader undercut on ile piyasaya bağlanır", config.fallbackPrice);
+        }
+        if (scanFresh()) {
+            long age = (System.currentTimeMillis() - scanPriceAt) / 1000;
+            return String.format("oyun içi tarama ($%,.0f, %d sn önce)", scanPrice, age);
+        }
+        return String.format("donut.auction API ($%,.0f) — henüz piyasa taraması yok", apiPrice);
     }
 
     private boolean scanFresh() {

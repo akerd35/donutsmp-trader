@@ -58,6 +58,11 @@ public class TraderCommands {
     private static void registerBase(CommandDispatcher<FabricClientCommandSource> dispatcher, String rootName) {
         dispatcher.register(ClientCommands.literal(rootName)
                 .executes(context -> showStatus(context.getSource()))
+                .then(ClientCommands.literal("fullauto")
+                        .executes(context -> fullAuto(context.getSource(), null))
+                        .then(ClientCommands.argument("item", StringArgumentType.word())
+                                .suggests(ITEM_SUGGESTIONS)
+                                .executes(context -> fullAuto(context.getSource(), StringArgumentType.getString(context, "item")))))
                 .then(ClientCommands.literal("help")
                         .executes(context -> showHelp(context.getSource())))
                 .then(ClientCommands.literal("status")
@@ -105,6 +110,37 @@ public class TraderCommands {
         );
     }
 
+    /** Tek komutla çalışır hâle getirir; geri kalan ayarlar varsayılanıyla kalır. */
+    private static int fullAuto(FabricClientCommandSource source, String item) {
+        TraderConfig config = TraderConfig.get();
+        if (item != null && !item.isBlank()) {
+            config.targetItem = item.toLowerCase().replace("minecraft:", "").trim();
+        }
+        config.autoUndercut = true;
+        config.autoScan = true;
+        config.simulationMode = false;
+        config.enabled = true;
+        config.save();
+
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) {
+            mod.invalidateScan();
+            mod.tickMarketLogic();
+        }
+
+        source.sendFeedback(Component.literal("§6§l[DonutTrader] §a§lTAM OTOMATİK AÇIK"));
+        source.sendFeedback(Component.literal(String.format(
+                "§7Satılacak: §f%dx %s §7| Rakibin §f%%%.2f §7altına | Taban: §f$%,.0f §7| Slot: §f%d",
+                config.lotSize, config.targetItem, config.undercutPercent, config.minPriceFloor, config.maxSlots)));
+        source.sendFeedback(Component.literal("§7Piyasayı kendisi soracak §8(/" + String.format(config.marketCommand, config.targetItem) + ")§7, fiyatı kendisi ayarlayacak."));
+        source.sendFeedback(Component.literal("§7Hotbar'da bir boş slot bırakın. Durdurmak için: §f/trader off §7ya da §f'" + (mod != null ? mod.getKeyName() : "K") + "' §7tuşu."));
+
+        if (config.minPriceFloor <= 0) {
+            source.sendFeedback(Component.literal("§c§lUYARI: §cTaban fiyat yok. Zararına satmamak için: §f/trader floor <fiyat>"));
+        }
+        return 1;
+    }
+
     private static int showHelp(FabricClientCommandSource source) {
         DonutTraderMod mod = DonutTraderMod.getInstance();
         String keyName = (mod != null) ? mod.getKeyName() : "K";
@@ -115,7 +151,11 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §7- Mod 64'lük yığından otomatik olarak 1x ayırıp hotbar'a alır ve /ah sell yapar."));
         source.sendFeedback(Component.literal("  §7- 18 slot dolana kadar arka arkaya listeler; eşya satıldıkça yenisini koyar."));
         source.sendFeedback(Component.literal(""));
-        source.sendFeedback(Component.literal("§e§l2. Hızlı Kısayollar & Komutlar:"));
+        source.sendFeedback(Component.literal("§e§l2. Tek Komutla Başlatma:"));
+        source.sendFeedback(Component.literal("  §a/trader fullauto <eşya> §7-> Hedefi ayarlar, piyasayı kendisi okur, satmaya başlar"));
+        source.sendFeedback(Component.literal("  §8Diğer komutlar sadece ince ayar içindir, zorunlu değildir."));
+        source.sendFeedback(Component.literal(""));
+        source.sendFeedback(Component.literal("§e§l3. Hızlı Kısayollar & Komutlar:"));
         source.sendFeedback(Component.literal("  §a'" + keyName + "' Tuşu §7-> Modu anında Açar / Kapatır (Toggle)"));
         source.sendFeedback(Component.literal("  §f/trader on / off §7-> Modu başlatır / duraklatır"));
         source.sendFeedback(Component.literal("  §f/trader item <ad> §7-> Hedef eşyayı değiştirir §8(Tab ile seçebilirsiniz)"));
@@ -149,6 +189,9 @@ public class TraderCommands {
         if (lm != null) {
             source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots() + " §7| §eKuyruk: §f" + lm.getQueueSize()));
             source.sendFeedback(Component.literal("§eToplam Kasa Kazancı: §a+$" + String.format("%,d", lm.getTotalEarned()) + " §7(Satılan: §f" + lm.getItemsSold() + "x§7)"));
+        }
+        if (mod != null) {
+            source.sendFeedback(Component.literal("§eFiyat kaynağı: §f" + mod.priceSource()));
         }
         source.sendFeedback(Component.literal("§7Detaylı Rehber İçin: §f/trader help"));
         source.sendFeedback(Component.literal("§6§l======================================================"));

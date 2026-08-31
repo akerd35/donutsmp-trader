@@ -51,6 +51,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 
 | Komut | Tab Desteği | Açıklama |
 | :--- | :--- | :--- |
+| **`/trader fullauto <eşya>`** | `[TAB]` | **Tek komut:** hedefi ayarlar, piyasayı kendisi okur, satmaya başlar |
 | **`K`** veya **`Ğ`** | - | Modu anında Açar / Kapatır *(Minecraft Keybinds menüsünden değiştirilebilir)* |
 | **`/trader on`** / **`/trader off`** | `[TAB]` | Modu başlatır / duraklatır |
 | **`/trader item <eşya>`** | `[TAB]` | Hedef eşyayı değiştirir *(Örn: `ladder`, `water_bucket`, `totem_of_undying`)* |
@@ -120,6 +121,18 @@ macOS'ta:
 ```
 Çalışan bir oyunun altında jar'ı değiştirmeyin: JVM zip'i açık tutar ve oyun
 `ZipException` ile çöker.
+
+### Hızlı başlangıç
+```
+/trader floor 5000
+/trader fullauto ladder
+```
+Gerisi otomatiktir: mod piyasayı kendisi sorar (`/ah search <eşya>`), en ucuz
+rakibin %0.1 altına fiyat belirler, 64'lük yığından lot ayırır ve slot dolana
+kadar listeler. Diğer komutların hepsi ince ayar içindir.
+
+Sunucunuzda arama komutu farklıysa `config/donutsmp_trader.json` içindeki
+`marketCommand` alanını değiştirin (varsayılan `ah search %s`).
 
 ### Güncelleme
 Oyun içinde `/trader update`: GitHub Release'inden son jar'ı indirir, sha256'sını
