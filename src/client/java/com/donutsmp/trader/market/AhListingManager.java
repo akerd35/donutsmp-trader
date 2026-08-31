@@ -132,6 +132,19 @@ public class AhListingManager {
         return pendingSince > 0 && System.currentTimeMillis() - pendingSince < PENDING_WINDOW_MS;
     }
 
+    /** Doğrulama başarısız oldu: ilan hiç girmemiş, slotu geri ver. */
+    public synchronized void onListingRejected() {
+        pendingSince = 0;
+        if (activeListings > 0) activeListings--;
+        this.isLimitReached = false;
+        this.currentState = State.IDLE;
+    }
+
+    public synchronized void onListingVerified() {
+        pendingSince = 0;
+        this.currentState = State.IDLE;
+    }
+
     /** Reddedilen ilanı sayaçtan düşer. Pencere geçtiyse ilan gerçekten girmiştir. */
     private boolean releasePending() {
         if (!pending()) return false;

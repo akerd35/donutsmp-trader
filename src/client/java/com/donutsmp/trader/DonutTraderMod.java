@@ -8,6 +8,7 @@ import com.donutsmp.trader.gui.ScreenDump;
 import com.donutsmp.trader.gui.TraderHud;
 import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.market.AhListingManager;
+import com.donutsmp.trader.market.AhScreens;
 import com.donutsmp.trader.market.AutoRelister;
 import com.donutsmp.trader.market.Undercut;
 import com.donutsmp.trader.update.Updater;
@@ -35,7 +36,6 @@ import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 public class DonutTraderMod implements ClientModInitializer {
     public static final String MOD_ID = "donutsmp_trader";
@@ -44,10 +44,8 @@ public class DonutTraderMod implements ClientModInitializer {
     private static final long COMMAND_COOLDOWN_MS = 1400; // Sunucu antispam eşiği
     private static final long SCAN_PRICE_TTL_MS = 5 * 60 * 1000L;
 
-    /** Kendi ilanlarımızın ekranı; genel /ah tarama ekranından ayırt edilmeli. */
-    private static final Pattern MY_LISTINGS_TITLE = Pattern.compile(
-            "(?i)your listings|my listings|your auctions|ilanlar"
-    );
+    /** /ah sell sonrası eşyanın elden gitmesi için tanınan süre. */
+    private static final long VERIFY_AFTER_MS = 2000;
 
     private static DonutTraderMod INSTANCE;
 
@@ -62,6 +60,9 @@ public class DonutTraderMod implements ClientModInitializer {
     private volatile long scanPriceAt = 0;
 
     private KeyMapping toggleKey;
+    private long verifyAt = 0;
+    private int verifySlot = -1;
+    private int verifyCount = 0;
     private long lastActionTime = 0;
     private long lastCommandTime = 0;
     private long lastWarningTime = 0;
@@ -115,9 +116,9 @@ public class DonutTraderMod implements ClientModInitializer {
                     ScreenDump.capture(screen.getTitle(), containerScreen.getMenu());
                 }
                 String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
-                if (MY_LISTINGS_TITLE.matcher(title).find()) {
+                if (AhScreens.isMyListings(title)) {
                     syncListingsFromScreen(client, containerScreen.getMenu());
-                } else {
+                } else if (AhScreens.isMarket(title)) {
                     scanMarketScreen(client, containerScreen.getMenu());
                 }
             });
@@ -236,6 +237,11 @@ public class DonutTraderMod implements ClientModInitializer {
             return;
         }
 
+        if (verifyAt > 0) {
+            if (now < verifyAt) return;
+            verifyListing(client);
+        }
+
         if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
         if (!listingManager.canListMore()) return;
 
@@ -282,10 +288,44 @@ public class DonutTraderMod implements ClientModInitializer {
 
         client.player.connection.sendCommand("ah sell " + sellPrice);
         listingManager.onListingSent();
+        verifyAt = now + VERIFY_AFTER_MS;
+        verifySlot = selected;
+        verifyCount = held.getCount();
         lastCommandTime = now;
         lastActionTime = now;
         LOGGER.info("[DonutSMP Trader] /ah sell {} gonderildi! (Aktif: {}/{})",
                 sellPrice, listingManager.getActiveListings(), listingManager.getMaxSlots());
+    }
+
+    /**
+     * İlan gerçekten girdi mi?
+     *
+     * Sunucu bazen komuta hiç cevap vermiyor; sohbeti dinlemek yetmiyor.
+     * İlan girdiyse eşya elden gider — envantere bakmak kesin cevaptır.
+     */
+    private void verifyListing(Minecraft client) {
+        int slot = verifySlot;
+        int expected = verifyCount;
+        verifyAt = 0;
+        verifySlot = -1;
+        verifyCount = 0;
+
+        if (client.player == null || slot < 0) return;
+
+        ItemStack stack = client.player.getInventory().getItem(slot);
+        boolean stillThere = !stack.isEmpty()
+                && InventoryActionHelper.idOf(stack).equals(DonutAuctionClient.normalizeItemName(config.targetItem))
+                && stack.getCount() == expected;
+
+        if (stillThere) {
+            listingManager.onListingRejected();
+            LOGGER.info("[DonutSMP Trader] Ilan girmedi, esya elde kaldi. Aktif: {}/{}",
+                    listingManager.getActiveListings(), listingManager.getMaxSlots());
+            warn(client, System.currentTimeMillis(),
+                    "§6[DonutTrader] §eSatış gerçekleşmedi, eşya elinizde kaldı. Slot sayacı geri alındı.");
+        } else {
+            listingManager.onListingVerified();
+        }
     }
 
     private void warn(Minecraft client, long now, String message) {
