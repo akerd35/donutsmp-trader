@@ -132,8 +132,10 @@ Gerisi otomatiktir: mod piyasayı kendisi sorar (`/ah search <eşya>`), en ucuz
 rakibin 1$ altına fiyat belirler, 64'lük yığından lot ayırır ve slot dolana
 kadar listeler. Diğer komutların hepsi ince ayar içindir.
 
-Mod piyasayı **30 saniyede bir** kendisi sorup fiyatı yeniden hesaplar
-(`scanIntervalSeconds`). Okunan fiyat, aralığın üç katı kadar geçerli sayılır;
+Mod piyasayı **6 saniyede bir** kendisi sorup fiyatı yeniden hesaplar
+(`scanIntervalSeconds`, 3–600 sn). Her tarama menüyü kısa süreliğine açıp
+kapattığı için sık aralık oyun oynamayı zorlaştırır ve sunucunun komut hız
+sınırına yaklaştırır; rahatsız ederse büyütün. Okunan fiyat, aralığın üç katı kadar geçerli sayılır;
 o süre içinde tarama tutmazsa API fiyatına düşer ama satış durmaz.
 
 Sunucunuzda arama komutu farklıysa `config/donutsmp_trader.json` içindeki

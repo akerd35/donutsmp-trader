@@ -212,9 +212,13 @@ public class DonutTraderMod implements ClientModInitializer {
     private void requestMarketScan(Minecraft client, long now) {
         if (!config.autoScan || !config.autoUndercut) return;
         if (now < nextMarketScanAt || marketRequestedAt > 0) return;
+        // Arama da bir komut: satışla aynı antispam aralığını paylaşmazsa
+        // ikisi aynı tick'te gidip sunucunun hız sınırına takılır.
+        if (now - lastCommandTime < COMMAND_COOLDOWN_MS) return;
 
         nextMarketScanAt = now + scanIntervalMs();
         marketRequestedAt = now;
+        lastCommandTime = now;
         client.player.connection.sendCommand(String.format(config.marketCommand, config.targetItem));
         LOGGER.info("[DonutSMP Trader] Piyasa soruldu: /{}", String.format(config.marketCommand, config.targetItem));
     }
@@ -495,7 +499,7 @@ public class DonutTraderMod implements ClientModInitializer {
     }
 
     private long scanIntervalMs() {
-        return Math.max(15, config.scanIntervalSeconds) * 1000L;
+        return Math.max(3, config.scanIntervalSeconds) * 1000L;
     }
 
     private boolean scanFresh() {
