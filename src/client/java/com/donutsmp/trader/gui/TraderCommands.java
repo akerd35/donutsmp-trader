@@ -164,6 +164,15 @@ public class TraderCommands {
         if (config.minPriceFloor <= 0) {
             source.sendFeedback(Component.literal("§c§lUYARI: §cTaban fiyat yok. Zararına satmamak için: §f/trader floor <fiyat>"));
         }
+
+        // Autoplus ayarlari kalicidir: fiyati sabitledigini soylemezsek
+        // fullauto'nun undercut yaptigi sanilir.
+        if (config.flipEnabled) {
+            source.sendFeedback(Component.literal(String.format(
+                    "§e§lNOT: §eAutoplus hâlâ açık — satış fiyatı §f$%,.0f §esabit, undercut devre dışı. %s",
+                    config.flipSellAt, config.flipArmed ? "§c§lSATIN ALMA SİLAHLI." : "§7(kuru)")));
+            source.sendFeedback(Component.literal("§7Sadece normal satış istiyorsanız: §f/trader autoplus off"));
+        }
         return 1;
     }
 
