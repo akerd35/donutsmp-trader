@@ -42,8 +42,6 @@ public class DonutTraderMod implements ClientModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
     private static final long COMMAND_COOLDOWN_MS = 1400; // Sunucu antispam eşiği
-    private static final long SCAN_PRICE_TTL_MS = 5 * 60 * 1000L;
-
     /** /ah sell sonrası eşyanın elden gitmesi için tanınan süre. */
     private static final long VERIFY_AFTER_MS = 2000;
 
@@ -214,9 +212,8 @@ public class DonutTraderMod implements ClientModInitializer {
     private void requestMarketScan(Minecraft client, long now) {
         if (!config.autoScan || !config.autoUndercut) return;
         if (now < nextMarketScanAt || marketRequestedAt > 0) return;
-        if (scanFresh()) return;
 
-        nextMarketScanAt = now + Math.max(30, config.scanIntervalSeconds) * 1000L;
+        nextMarketScanAt = now + scanIntervalMs();
         marketRequestedAt = now;
         client.player.connection.sendCommand(String.format(config.marketCommand, config.targetItem));
         LOGGER.info("[DonutSMP Trader] Piyasa soruldu: /{}", String.format(config.marketCommand, config.targetItem));
@@ -287,7 +284,8 @@ public class DonutTraderMod implements ClientModInitializer {
         scanPrice = newOptimal;
         scanPriceAt = System.currentTimeMillis();
 
-        if (Math.abs(newOptimal - previous) >= 1.0) {
+        LOGGER.info("[DonutSMP Trader] Piyasa: en ucuz rakip {} -> hedef {}", lowestCompetitor, newOptimal);
+        if (Math.abs(newOptimal - previous) >= Math.max(1.0, previous * 0.01)) {
             client.player.sendSystemMessage(Component.literal(String.format(
                     "§6[DonutTrader] §aPiyasa tarandı! En ucuz rakip: §e$%,.0f §a-> Yeni satış hedefimiz: §6$%,.0f",
                     lowestCompetitor, newOptimal)));
@@ -342,10 +340,8 @@ public class DonutTraderMod implements ClientModInitializer {
 
         // Piyasa fiyatı istenir ama satış ona bağlanmaz: tarama tutmadığında
         // mod hiç satmaz hâle geliyordu. API fiyatı ve taban fiyat zaten var.
-        if (!scanFresh()) {
-            requestMarketScan(client, now);
-            if (marketRequestedAt > 0) return; // cevabı 4 saniye bekle, sonra devam
-        }
+        requestMarketScan(client, now);
+        if (marketRequestedAt > 0 && !scanFresh()) return; // elde fiyat yoksa cevabı bekle
 
         if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
         if (!listingManager.canListMore()) return;
@@ -492,8 +488,17 @@ public class DonutTraderMod implements ClientModInitializer {
         return String.format("donut.auction API ($%,.0f) — henüz piyasa taraması yok", apiPrice);
     }
 
+    /** Tarama aralığının üç katından eski fiyat artık piyasayı temsil etmiyor. */
+    private long scanTtlMs() {
+        return Math.max(60_000L, scanIntervalMs() * 3);
+    }
+
+    private long scanIntervalMs() {
+        return Math.max(15, config.scanIntervalSeconds) * 1000L;
+    }
+
     private boolean scanFresh() {
-        return scanPrice > 0 && System.currentTimeMillis() - scanPriceAt < SCAN_PRICE_TTL_MS;
+        return scanPrice > 0 && System.currentTimeMillis() - scanPriceAt < scanTtlMs();
     }
 
     /** Hedef ya da lot değişince eski taramanın fiyatı artık bu eşyaya ait değildir. */

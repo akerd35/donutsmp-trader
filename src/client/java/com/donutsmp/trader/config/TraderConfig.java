@@ -26,7 +26,7 @@ public class TraderConfig {
     public double undercutPercent = 0.1;
     public boolean autoScan = true;
     public String marketCommand = "ah search %s";
-    public int scanIntervalSeconds = 90;
+    public int scanIntervalSeconds = 30;
     public int clickDelayMs = 250;
     public int marketPollSeconds = 15;
     public boolean simulationMode = false;
@@ -96,7 +96,7 @@ public class TraderConfig {
         if (marketCommand == null || marketCommand.isBlank() || !marketCommand.contains("%s")) {
             marketCommand = "ah search %s";
         }
-        scanIntervalSeconds = Math.max(30, scanIntervalSeconds);
+        scanIntervalSeconds = Math.max(15, Math.min(600, scanIntervalSeconds));
         clickDelayMs = Math.max(0, clickDelayMs);
         marketPollSeconds = Math.max(5, marketPollSeconds);
     }
