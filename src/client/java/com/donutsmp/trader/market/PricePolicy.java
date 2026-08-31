@@ -3,9 +3,11 @@ package com.donutsmp.trader.market;
 /**
  * Fiyatı ne zaman değiştirmeli?
  *
- * Her taramada körlemesine "en ucuzun bir altı" demek iki şeyi kaybettiriyor:
- * rakip yokken fiyatı boşuna aşağı çeker, bir kuruşluk farklar için de ilanı
- * durmadan yeniler. Karar burada toplandı ki ne zaman kırdığı denetlenebilsin.
+ * Menü fiyatları kısaltarak gösteriyor: 11.999 ekranda "11k" yazıyor. Okuduğumuz
+ * değer gerçeğinden 999'a kadar düşük olabilir, dolayısıyla küçük farklara
+ * tepki vermek fiyatı kendi kendine aşağı çeker — 11.999 gören mod 10.999'a,
+ * onu "10k" gören mod 9.999'a iner. Bu yüzden iki fren var: rakip bizden
+ * belirgin biçimde ucuz olmalı, ve tek tük ucuz ilan hareket ettirmemeli.
  */
 public final class PricePolicy {
 
@@ -26,20 +28,15 @@ public final class PricePolicy {
     /**
      * @param current            şu anki hedef fiyatımız
      * @param cheapestCompetitor bizim olmayan en ucuz ilan; yoksa 0 ya da eksi
-     * @param minStep            bu kadarlık farka değmez, fiyat sabit kalır
+     * @param competitorsBelow   bizden ucuz olan ilan sayısı
+     * @param minGap             rakip bizden en az bu kadar ucuz olmadan inilmez
+     * @param minBelow           bu sayıdan az ucuz ilan varsa beklenir
      */
-    public static Decision decide(double current, double cheapestCompetitor, double floor,
-                                  double undercutAmount, double undercutPercent, double minStep) {
+    public static Decision decide(double current, double cheapestCompetitor, int competitorsBelow,
+                                  double floor, double undercutAmount, double undercutPercent,
+                                  double minStep, double minGap, int minBelow) {
         if (cheapestCompetitor <= 0) {
             return new Decision(current, Action.KEEP, "rakip yok, fiyat korunuyor");
-        }
-
-        if (cheapestCompetitor <= floor) {
-            double atFloor = Math.max(floor, 0);
-            if (Math.abs(atFloor - current) < 0.5) {
-                return new Decision(current, Action.KEEP, "rakip taban fiyatın altında, tabandayız");
-            }
-            return new Decision(atFloor, Action.UNDERCUT, "rakip taban fiyatın altında, tabana iniliyor");
         }
 
         double candidate = Undercut.target(cheapestCompetitor, undercutAmount, undercutPercent, floor);
@@ -48,15 +45,29 @@ public final class PricePolicy {
             return new Decision(candidate, Action.UNDERCUT, "ilk fiyat");
         }
 
-        double delta = candidate - current;
-        if (Math.abs(delta) < Math.max(1.0, minStep)) {
+        // Rakip bizden pahalı: fiyatı yükseltmek serbest, buradaki gürültü
+        // riski yok — yanlış okuma bizi zarara değil, satılmamaya götürür.
+        if (cheapestCompetitor >= current) {
+            if (candidate - current >= Math.max(1.0, minStep)) {
+                return new Decision(candidate, Action.RAISE, "piyasa yükseldi");
+            }
             return new Decision(current, Action.KEEP, "fark önemsiz");
         }
 
-        if (delta > 0) {
-            return new Decision(candidate, Action.RAISE, "piyasa yükseldi, fiyat artırılıyor");
+        if (competitorsBelow < Math.max(1, minBelow)) {
+            return new Decision(current, Action.KEEP,
+                    "sadece " + competitorsBelow + " ucuz ilan var, satılmaları bekleniyor");
         }
 
-        return new Decision(candidate, Action.UNDERCUT, "rakip altımıza girdi");
+        if (current - cheapestCompetitor < Math.max(1.0, minGap)) {
+            return new Decision(current, Action.KEEP,
+                    "rakip yeterince ucuz değil (fark " + Math.round(current - cheapestCompetitor) + ")");
+        }
+
+        if (candidate <= floor && current <= floor) {
+            return new Decision(current, Action.KEEP, "taban fiyattayız");
+        }
+
+        return new Decision(candidate, Action.UNDERCUT, "rakip belirgin şekilde altımızda");
     }
 }

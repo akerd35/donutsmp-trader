@@ -38,8 +38,28 @@ public final class MarketListing {
         if (cheapest < 0) return -1;
 
         // İsim lore'da yazmıyorsa son çare: bu fiyatı biz astıysak bizimdir.
-        if (ownPrices != null && ownPrices.contains((long) cheapest)) return -1;
+        if (isOurPrice(cheapest, ownPrices)) return -1;
 
         return cheapest;
+    }
+
+    /**
+     * Menü 11.999'u "11k" diye gösteriyor; tam eşleşme aramak kendi ilanımızı
+     * rakip sanmamıza yeter. Yuvarlanmış bir değer, o binliğe düşen kendi
+     * fiyatlarımızdan birini gizliyor olabilir.
+     */
+    static boolean isOurPrice(double price, Set<Long> ownPrices) {
+        if (ownPrices == null || ownPrices.isEmpty()) return false;
+
+        long exact = (long) price;
+        if (ownPrices.contains(exact)) return true;
+
+        for (long step : new long[] {1_000L, 1_000_000L}) {
+            if (exact % step != 0) continue;
+            for (long own : ownPrices) {
+                if (own >= exact && own < exact + step) return true;
+            }
+        }
+        return false;
     }
 }

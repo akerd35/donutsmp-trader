@@ -27,6 +27,10 @@ public class TraderConfig {
     public double undercutPercent = 0.0;
     /** Bu kadarlık bir fiyat farkı için ilan yenilenmez. */
     public double minRepriceStep = 10.0;
+    /** Rakip bizden en az bu kadar ucuz olmadan fiyat kırılmaz. */
+    public double minUndercutGap = 2000.0;
+    /** Bu sayıdan az ucuz ilan varsa satılmaları beklenir. */
+    public int minCompetitorsBelow = 3;
     public boolean autoScan = true;
     public String marketCommand = "ah search %s";
     public boolean marketCommandFound = false;
@@ -65,6 +69,8 @@ public class TraderConfig {
         live.undercutAmount = fresh.undercutAmount;
         live.undercutPercent = fresh.undercutPercent;
         live.minRepriceStep = fresh.minRepriceStep;
+        live.minUndercutGap = fresh.minUndercutGap;
+        live.minCompetitorsBelow = fresh.minCompetitorsBelow;
         live.autoScan = fresh.autoScan;
         live.marketCommand = fresh.marketCommand;
         live.marketCommandFound = fresh.marketCommandFound;
@@ -102,6 +108,8 @@ public class TraderConfig {
         fallbackPrice = Math.max(minPriceFloor, fallbackPrice);
         undercutAmount = Math.max(0.0, undercutAmount);
         minRepriceStep = Math.max(0.0, minRepriceStep);
+        minUndercutGap = Math.max(0.0, minUndercutGap);
+        minCompetitorsBelow = Math.max(1, minCompetitorsBelow);
         undercutPercent = Math.max(0.0, Math.min(50.0, undercutPercent));
         if (marketCommand == null || marketCommand.isBlank() || !marketCommand.contains("%s")) {
             marketCommand = "ah search %s";

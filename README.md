@@ -157,7 +157,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### Testler
 ```bash
-./gradlew test       # 56 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+./gradlew test       # 59 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
 ```
 
 ---
@@ -166,7 +166,8 @@ git tag v1.0.1 && git push origin v1.0.1
 
 | Konu | Durum |
 | :--- | :--- |
-| **Ne zaman fiyat kırılır** | Rakip yoksa fiyat **değişmez**; rakip altımıza girerse kırılır, piyasa yükselirse yükseltilir. `minRepriceStep`'ten (varsayılan $10) küçük oynamalar için ilan yenilenmez. |
+| **Ne zaman fiyat kırılır** | Rakip yoksa fiyat **değişmez**. Kırmak için iki şart birden: en az **3 ilan** (`minCompetitorsBelow`) altımızda olmalı **ve** en ucuzu bizden en az **$2.000** (`minUndercutGap`) ucuz olmalı. Piyasa yükselirse fiyat yükseltilir. |
+| **Menünün fiyat yuvarlaması** | AH, 11.999'u "11k" diye gösteriyor; okunan değer gerçeğinden 999'a kadar düşük olabilir. Yukarıdaki iki eşik bu gürültüyü emiyor, ayrıca kendi ilan tespiti yuvarlanmış fiyatları da eşleştiriyor. |
 | **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` bunu tespit edip logluyor; `/ah listings` menüsünden iptal edip yeniden koyma akışı yazılmadı. |
 | **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/ah listings` menüsünü açmak sayacı gerçekle eşitler. |
 | **`/ah listings` başlık eşleşmesi** | Ekran, başlığında `your listings` / `my listings` / `ilanlar` geçtiğinde tanınır. Sunucudaki başlık farklıysa senkron çalışmaz — `/trader active <sayı>` ile elle eşitleyin. |

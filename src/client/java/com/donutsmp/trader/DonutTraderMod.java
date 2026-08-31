@@ -315,6 +315,7 @@ public class DonutTraderMod implements ClientModInitializer {
         String self = client.player.getGameProfile().name();
         double lowestCompetitor = Double.MAX_VALUE;
         int skippedOwn = 0;
+        List<Double> competitorPrices = new java.util.ArrayList<>();
 
         int scanned = Math.min(45, slots.size());
         for (int i = 0; i < scanned; i++) {
@@ -330,6 +331,7 @@ public class DonutTraderMod implements ClientModInitializer {
                 skippedOwn++;
                 continue;
             }
+            competitorPrices.add(price);
             if (price < lowestCompetitor) lowestCompetitor = price;
         }
 
@@ -338,14 +340,20 @@ public class DonutTraderMod implements ClientModInitializer {
             return;
         }
         double previous = scanFresh() ? scanPrice : 0;
-        PricePolicy.Decision decision = PricePolicy.decide(previous, lowestCompetitor, config.minPriceFloor,
-                config.undercutAmount, config.undercutPercent, config.minRepriceStep);
+        int below = 0;
+        for (double p : competitorPrices) {
+            if (previous > 0 && p < previous) below++;
+        }
+
+        PricePolicy.Decision decision = PricePolicy.decide(previous, lowestCompetitor, below,
+                config.minPriceFloor, config.undercutAmount, config.undercutPercent,
+                config.minRepriceStep, config.minUndercutGap, config.minCompetitorsBelow);
 
         scanPrice = decision.price();
         scanPriceAt = System.currentTimeMillis();
 
-        LOGGER.info("[DonutSMP Trader] Piyasa: rakip {} | {} -> {} ({}) (kendi ilanimiz atlandi: {})",
-                lowestCompetitor, previous, decision.price(), decision.reason(), skippedOwn);
+        LOGGER.info("[DonutSMP Trader] Piyasa: rakip {} ({} tanesi altimizda) | {} -> {} ({}) (kendi ilanimiz atlandi: {})",
+                lowestCompetitor, below, previous, decision.price(), decision.reason(), skippedOwn);
 
         if (decision.changed() && previous > 0) {
             client.player.sendSystemMessage(Component.literal(String.format(

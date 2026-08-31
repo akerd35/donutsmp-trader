@@ -39,6 +39,20 @@ class MarketListingTest {
     }
 
     @Test
+    void recognisesOurOwnListingThroughTheMenusRounding() {
+        // 11.999'a astık; menü "11k" gösteriyor.
+        List<String> lore = List.of("§7Price: §a$11k");
+        assertTrue(MarketListing.competitorPrice(lore, "sinlech", Set.of(11999L)) < 0,
+                "kısaltılmış fiyat kendi ilanımızı gizlememeli");
+    }
+
+    @Test
+    void aRoundedPriceFromSomeoneElseIsStillACompetitor() {
+        List<String> lore = List.of("§7Price: §a$8k");
+        assertEquals(8000.0, MarketListing.competitorPrice(lore, "sinlech", Set.of(11999L)), 0.001);
+    }
+
+    @Test
     void takesTheCheapestLineWhenLoreHasSeveralNumbers() {
         List<String> lore = List.of("Price: $12,000", "Unit: $9,500");
         assertEquals(9500.0, MarketListing.competitorPrice(lore, "sinlech", NONE), 0.001);
