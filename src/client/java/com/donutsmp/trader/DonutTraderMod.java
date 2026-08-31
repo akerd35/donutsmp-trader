@@ -340,9 +340,11 @@ public class DonutTraderMod implements ClientModInitializer {
             verifyListing(client);
         }
 
+        // Piyasa fiyatı istenir ama satış ona bağlanmaz: tarama tutmadığında
+        // mod hiç satmaz hâle geliyordu. API fiyatı ve taban fiyat zaten var.
         if (!scanFresh()) {
             requestMarketScan(client, now);
-            return;
+            if (marketRequestedAt > 0) return; // cevabı 4 saniye bekle, sonra devam
         }
 
         if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
