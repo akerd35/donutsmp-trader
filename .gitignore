@@ -1,22 +1,11 @@
-# Build output
+.gradle/
 build/
-bin/
+run/
 out/
-target/
 *.class
-
-# Node & external
-node_modules/
-split-seller/
-package*.json
-tsconfig.json
-
-# IDE & OS
 .idea/
 *.iml
-.vscode/
 .DS_Store
-Thumbs.db
-
-# Config local overrides
-config/donutsmp_trader.json
+.env
+/config/
+logs/

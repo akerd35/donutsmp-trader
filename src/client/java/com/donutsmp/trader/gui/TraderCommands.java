@@ -66,7 +66,7 @@ public class TraderCommands {
                 .then(ClientCommands.literal("reset")
                         .executes(context -> resetListings(context.getSource())))
                 .then(ClientCommands.literal("item")
-                        .then(ClientCommands.argument("name", StringArgumentType.string())
+                        .then(ClientCommands.argument("name", StringArgumentType.word())
                                 .suggests(ITEM_SUGGESTIONS)
                                 .executes(context -> setItem(context.getSource(), StringArgumentType.getString(context, "name")))))
                 .then(ClientCommands.literal("price")
@@ -84,6 +84,12 @@ public class TraderCommands {
                 .then(ClientCommands.literal("floor")
                         .then(ClientCommands.argument("price", DoubleArgumentType.doubleArg(0.0))
                                 .executes(context -> setFloor(context.getSource(), DoubleArgumentType.getDouble(context, "price")))))
+                .then(ClientCommands.literal("undercut")
+                        .then(ClientCommands.literal("on").executes(context -> setUndercut(context.getSource(), true)))
+                        .then(ClientCommands.literal("off").executes(context -> setUndercut(context.getSource(), false))))
+                .then(ClientCommands.literal("sim")
+                        .then(ClientCommands.literal("on").executes(context -> setSimulation(context.getSource(), true)))
+                        .then(ClientCommands.literal("off").executes(context -> setSimulation(context.getSource(), false))))
                 .then(ClientCommands.literal("reload")
                         .executes(context -> reloadConfig(context.getSource())))
         );
@@ -108,6 +114,8 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader reset §7-> Aktif slot sayacını sıfırlar"));
         source.sendFeedback(Component.literal("  §f/trader slots <sayı> §7-> Slot limitinizi ayarlar §8(Varsayılan: 18)"));
         source.sendFeedback(Component.literal("  §f/trader floor <fiyat> §7-> Taban fiyat koruması §8(Zararına satış engeli)"));
+        source.sendFeedback(Component.literal("  §f/trader undercut on|off §7-> Piyasayı takip et ya da sabit fiyat kullan"));
+        source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
         source.sendFeedback(Component.literal("  §f/trader status §7-> Anlık durumu, aktif slotları ve toplam kazancı gösterir"));
         source.sendFeedback(Component.literal("§6§l======================================================"));
         return 1;
@@ -123,7 +131,8 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("§6§l================== [DonutSMP Trader] =================="));
         source.sendFeedback(Component.literal("§eDurum: " + (config.enabled ? "§a[AKTİF]" : "§c[PASİF]") + " §7(Kısayol Tuşu: '" + keyName + "')"));
         source.sendFeedback(Component.literal("§eHedef Eşya: §f" + config.targetItem + " §7(Lot Boyutu: §f" + config.lotSize + "x§7)"));
-        source.sendFeedback(Component.literal("§eSatış Fiyatı: §a$" + String.format("%.0f", recPrice) + " §7| §eTaban Fiyat: §a$" + String.format("%.0f", config.minPriceFloor)));
+        source.sendFeedback(Component.literal("§eSatış Fiyatı: §a$" + String.format("%,.0f", recPrice) + " §7| §eTaban Fiyat: §a$" + String.format("%,.0f", config.minPriceFloor)));
+        source.sendFeedback(Component.literal("§eAuto-undercut: " + (config.autoUndercut ? "§aAÇIK" : "§cKAPALI") + (config.simulationMode ? " §7| §eSimülasyon: §eAÇIK" : "")));
         source.sendFeedback(Component.literal("§eMaksimum Slot: §f" + config.maxSlots));
         if (lm != null) {
             source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots() + " §7| §eKuyruk: §f" + lm.getQueueSize()));
@@ -147,11 +156,26 @@ public class TraderCommands {
         TraderConfig config = TraderConfig.get();
         config.fallbackPrice = Math.max(1.0, price);
         config.save();
-        DonutTraderMod mod = DonutTraderMod.getInstance();
-        if (mod != null) {
-            mod.tickMarketLogic();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eSatış fiyatı güncellendi: §a$" + String.format("%,.0f", config.fallbackPrice)));
+        if (config.autoUndercut) {
+            source.sendFeedback(Component.literal("§7Auto-undercut açık; bu fiyat yalnızca piyasa okunamazsa kullanılır. Sabitlemek için: §f/trader undercut off"));
         }
-        source.sendFeedback(Component.literal("§6[DonutTrader] §eSatış fiyatı güncellendi: §a$" + String.format("%.0f", config.fallbackPrice)));
+        return 1;
+    }
+
+    private static int setUndercut(FabricClientCommandSource source, boolean enabled) {
+        TraderConfig config = TraderConfig.get();
+        config.autoUndercut = enabled;
+        config.save();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eAuto-undercut: " + (enabled ? "§aAÇIK" : "§cKAPALI §7(sabit fiyat: $" + String.format("%,.0f", config.fallbackPrice) + ")")));
+        return 1;
+    }
+
+    private static int setSimulation(FabricClientCommandSource source, boolean enabled) {
+        TraderConfig config = TraderConfig.get();
+        config.simulationMode = enabled;
+        config.save();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eSimülasyon modu: " + (enabled ? "§eAÇIK §7(komut gönderilmez)" : "§aKAPALI")));
         return 1;
     }
 
@@ -169,6 +193,7 @@ public class TraderCommands {
         config.save();
         DonutTraderMod mod = DonutTraderMod.getInstance();
         if (mod != null) {
+            mod.invalidateScan();
             mod.tickMarketLogic();
         }
         source.sendFeedback(Component.literal("§6[DonutTrader] §eHedef eşya güncellendi: §f" + config.targetItem));
@@ -179,6 +204,11 @@ public class TraderCommands {
         TraderConfig config = TraderConfig.get();
         config.lotSize = Math.max(1, Math.min(64, lotSize));
         config.save();
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) {
+            mod.invalidateScan();
+            mod.tickMarketLogic();
+        }
         source.sendFeedback(Component.literal("§6[DonutTrader] §eLot boyutu güncellendi: §f" + config.lotSize + "x"));
         return 1;
     }
@@ -217,7 +247,14 @@ public class TraderCommands {
     }
 
     private static int reloadConfig(FabricClientCommandSource source) {
-        TraderConfig.load();
+        TraderConfig config = TraderConfig.reload();
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) {
+            mod.getListingManager().setMaxSlots(config.maxSlots);
+            mod.getAutoRelister().setMinPriceFloor(config.minPriceFloor);
+            mod.invalidateScan();
+            mod.tickMarketLogic();
+        }
         source.sendFeedback(Component.literal("§6[DonutTrader] §aAyar dosyası yeniden yüklendi!"));
         return 1;
     }

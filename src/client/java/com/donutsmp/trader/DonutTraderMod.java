@@ -1,0 +1,310 @@
+package com.donutsmp.trader;
+
+import com.donutsmp.trader.api.AhPriceParser;
+import com.donutsmp.trader.api.DonutAuctionClient;
+import com.donutsmp.trader.config.TraderConfig;
+import com.donutsmp.trader.gui.TraderCommands;
+import com.donutsmp.trader.gui.TraderHud;
+import com.donutsmp.trader.inventory.InventoryActionHelper;
+import com.donutsmp.trader.market.AhListingManager;
+import com.donutsmp.trader.market.AutoRelister;
+import com.mojang.blaze3d.platform.InputConstants;
+import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.core.component.DataComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.component.ItemLore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.List;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+public class DonutTraderMod implements ClientModInitializer {
+    public static final String MOD_ID = "donutsmp_trader";
+    public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
+
+    private static final long COMMAND_COOLDOWN_MS = 1400; // Sunucu antispam eşiği
+    private static final long SCAN_PRICE_TTL_MS = 5 * 60 * 1000L;
+
+    private static DonutTraderMod INSTANCE;
+
+    private DonutAuctionClient apiClient;
+    private AhListingManager listingManager;
+    private AutoRelister autoRelister;
+    private TraderConfig config;
+    private ScheduledExecutorService backgroundExecutor;
+
+    private volatile double apiPrice = 35000.0;
+    private volatile double scanPrice = -1;
+    private volatile long scanPriceAt = 0;
+
+    private KeyMapping toggleKey;
+    private long lastActionTime = 0;
+    private long lastCommandTime = 0;
+    private long lastWarningTime = 0;
+
+    @Override
+    public void onInitializeClient() {
+        INSTANCE = this;
+        this.config = TraderConfig.get();
+        this.config.enabled = false; // Oyuna her girildiğinde daima PASİF başlar
+        this.config.save();
+        this.apiClient = new DonutAuctionClient();
+        this.listingManager = new AhListingManager(config.maxSlots);
+        this.autoRelister = new AutoRelister(apiClient, config.minPriceFloor, 100.0);
+        this.apiPrice = config.fallbackPrice;
+
+        LOGGER.info("[DonutSMP Trader] Mod baslatiliyor... Hedef: {} (Lot: {}x, Limit: {} slot)",
+                config.targetItem, config.lotSize, config.maxSlots);
+
+        try {
+            this.toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                    "key.donutsmp_trader.toggle",
+                    InputConstants.Type.KEYSYM,
+                    InputConstants.KEY_K,
+                    KeyMapping.Category.MISC
+            ));
+        } catch (Throwable t) {
+            LOGGER.warn("KeyMapping kaydedilemedi: {}", t.getMessage());
+        }
+
+        try {
+            ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> TraderCommands.register(dispatcher));
+        } catch (Throwable t) {
+            LOGGER.warn("ClientCommandRegistrationCallback kaydedilemedi: {}", t.getMessage());
+        }
+
+        try {
+            ClientReceiveMessageEvents.CHAT.register((message, signedMessage, sender, params, receptionTimestamp) -> {
+                if (message != null) handleChatMessage(message.getString());
+            });
+            ClientReceiveMessageEvents.GAME.register((message, overlay) -> {
+                if (message != null && !overlay) handleChatMessage(message.getString());
+            });
+        } catch (Throwable t) {
+            LOGGER.warn("Chat dinleyici kaydedilemedi: {}", t.getMessage());
+        }
+
+        try {
+            ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+                if (client.player != null && screen instanceof AbstractContainerScreen<?> containerScreen) {
+                    scanMarketScreen(client, containerScreen.getMenu());
+                }
+            });
+        } catch (Throwable t) {
+            LOGGER.warn("ScreenEvents kaydedilemedi: {}", t.getMessage());
+        }
+
+        try {
+            ClientTickEvents.END_CLIENT_TICK.register(this::onClientTick);
+        } catch (Throwable t) {
+            LOGGER.warn("ClientTickEvents kaydedilemedi: {}", t.getMessage());
+        }
+
+        TraderHud.register();
+        startBackgroundService();
+    }
+
+    /** Açılan /ah menüsündeki rakip fiyatlarını lore üzerinden okur. */
+    private void scanMarketScreen(Minecraft client, AbstractContainerMenu menu) {
+        if (menu == null || !config.autoUndercut) return;
+
+        List<Slot> slots = menu.slots;
+        String target = DonutAuctionClient.normalizeItemName(config.targetItem);
+        double lowestCompetitor = Double.MAX_VALUE;
+
+        int scanned = Math.min(45, slots.size());
+        for (int i = 0; i < scanned; i++) {
+            ItemStack stack = slots.get(i).getItem();
+            if (stack.isEmpty() || !InventoryActionHelper.idOf(stack).equals(target)) continue;
+
+            ItemLore lore = stack.get(DataComponents.LORE);
+            if (lore == null) continue;
+
+            for (Component line : lore.lines()) {
+                double parsed = AhPriceParser.parsePrice(line.getString());
+                if (parsed > 0 && parsed < lowestCompetitor) {
+                    lowestCompetitor = parsed;
+                }
+            }
+        }
+
+        if (lowestCompetitor == Double.MAX_VALUE || lowestCompetitor <= config.minPriceFloor) return;
+
+        double newOptimal = Math.max(config.minPriceFloor, lowestCompetitor - 1.0);
+        if (newOptimal < effectivePrice()) {
+            scanPrice = newOptimal;
+            scanPriceAt = System.currentTimeMillis();
+            client.player.sendSystemMessage(Component.literal(String.format(
+                    "§6[DonutTrader] §aPiyasa tarandı! En ucuz rakip: §e$%,.0f §a-> Yeni satış hedefimiz: §6$%,.0f",
+                    lowestCompetitor, newOptimal)));
+        }
+    }
+
+    private void onClientTick(Minecraft client) {
+        if (toggleKey != null && toggleKey.consumeClick()) {
+            toggleEnabled();
+            if (client.player != null) {
+                client.player.sendSystemMessage(Component.literal("§6[DonutTrader] §eMod Durumu: " + (config.enabled ? "§a[AKTİF]" : "§c[PASİF]")));
+            }
+        }
+
+        // Chat, ESC, envanter: bir ekran açıkken mod işlem yapmaz
+        if (client.gui.screen() != null || client.isPaused()) return;
+        if (!config.enabled || client.player == null || client.getConnection() == null) return;
+
+        // Sanal tıklamalar oyuncunun kendi envanter menüsüne gider; başka bir
+        // konteyner açıksa slot numaraları bambaşka bir şeye denk gelir.
+        if (client.player.containerMenu != client.player.inventoryMenu) return;
+
+        long now = System.currentTimeMillis();
+
+        if (listingManager.isInCombat()) {
+            if (now - lastWarningTime > 6000) {
+                client.player.sendSystemMessage(Component.literal("§6[DonutTrader] §eSavaş modu (Combat Tag) aktif, işlem 20 saniye duraklatıldı."));
+                lastWarningTime = now;
+            }
+            return;
+        }
+
+        if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
+        if (!listingManager.canListMore()) return;
+
+        String target = DonutAuctionClient.normalizeItemName(config.targetItem);
+        int selected = client.player.getInventory().getSelectedSlot();
+        ItemStack held = client.player.getInventory().getSelectedItem();
+        boolean handReady = InventoryActionHelper.idOf(held).equals(target) && held.getCount() == config.lotSize;
+
+        if (!handReady) {
+            int emptyHotbar = InventoryActionHelper.findEmptyHotbarIndex(client.player);
+            if (emptyHotbar == -1) {
+                warn(client, now, "§6[DonutTrader] §cHotbar'ınızda en az 1 boş slot bırakınız!");
+                return;
+            }
+
+            int destination = InventoryActionHelper.HOTBAR_MENU_START + emptyHotbar;
+            int sourceSlot = InventoryActionHelper.findTargetSlot(client.player, target, config.lotSize, destination);
+            if (sourceSlot == -1) {
+                warn(client, now, "§6[DonutTrader] §cEnvanterinizde satılacak " + config.lotSize + "x " + config.targetItem + " kalmadı!");
+                return;
+            }
+
+            InventoryActionHelper.splitToHotbar(client, sourceSlot, emptyHotbar, config.lotSize);
+            client.player.getInventory().setSelectedSlot(emptyHotbar);
+            lastActionTime = now;
+            return;
+        }
+
+        long sellPrice = (long) effectivePrice();
+        if (sellPrice <= 0) return;
+
+        if (config.simulationMode) {
+            warn(client, now, String.format("§6[DonutTrader] §e[SİMÜLASYON] /ah sell %d gönderilmedi (slot %d).", sellPrice, selected));
+            lastCommandTime = now;
+            lastActionTime = now;
+            return;
+        }
+
+        client.player.connection.sendCommand("ah sell " + sellPrice);
+        listingManager.onListingAttempt();
+        lastCommandTime = now;
+        lastActionTime = now;
+        LOGGER.info("[DonutSMP Trader] /ah sell {} gonderildi! (Aktif: {}/{})",
+                sellPrice, listingManager.getActiveListings(), listingManager.getMaxSlots());
+    }
+
+    private void warn(Minecraft client, long now, String message) {
+        if (now - lastWarningTime <= 5000) return;
+        lastWarningTime = now;
+        if (client.player != null) {
+            client.player.sendSystemMessage(Component.literal(message));
+        }
+    }
+
+    private void startBackgroundService() {
+        this.backgroundExecutor = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "DonutTrader-Worker");
+            t.setDaemon(true);
+            return t;
+        });
+
+        int period = Math.max(5, config.marketPollSeconds);
+        this.backgroundExecutor.scheduleWithFixedDelay(this::tickMarketLogic, 1, period, TimeUnit.SECONDS);
+    }
+
+    public void tickMarketLogic() {
+        try {
+            this.apiPrice = apiClient.calculateOptimalSellPrice(
+                    config.targetItem,
+                    config.lotSize,
+                    config.fallbackPrice,
+                    config.minPriceFloor
+            );
+        } catch (Exception e) {
+            LOGGER.error("Market logic tick hatasi: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Auto-undercut kapalıyken /trader price ile verilen fiyat geçerlidir.
+     * Açıkken oyun içi tarama API'yi ezer: menüde görülen rakip fiyatı
+     * canlıdır, API cache'i birkaç dakika geride kalabilir.
+     */
+    public double effectivePrice() {
+        if (!config.autoUndercut) {
+            return Math.max(config.fallbackPrice, config.minPriceFloor);
+        }
+        double price = apiPrice;
+        if (scanPrice > 0 && System.currentTimeMillis() - scanPriceAt < SCAN_PRICE_TTL_MS) {
+            price = Math.min(price, scanPrice);
+        }
+        return Math.max(price, config.minPriceFloor);
+    }
+
+    /** Hedef ya da lot değişince eski taramanın fiyatı artık bu eşyaya ait değildir. */
+    public void invalidateScan() {
+        scanPrice = -1;
+        scanPriceAt = 0;
+    }
+
+    public void toggleEnabled() {
+        config.enabled = !config.enabled;
+        config.save();
+        LOGGER.info("[DonutSMP Trader] Mod Durumu: {}", config.enabled ? "AKTIF" : "PASIF");
+    }
+
+    public void handleChatMessage(String rawMessage) {
+        listingManager.onChatMessage(rawMessage);
+    }
+
+    public List<String> getHudInfo() {
+        return TraderHud.getHudLines(config, listingManager, effectivePrice());
+    }
+
+    public String getKeyName() {
+        return toggleKey != null ? toggleKey.getTranslatedKeyMessage().getString() : "K";
+    }
+
+    public static DonutTraderMod getInstance() {
+        return INSTANCE;
+    }
+
+    public DonutAuctionClient getApiClient() { return apiClient; }
+    public AhListingManager getListingManager() { return listingManager; }
+    public AutoRelister getAutoRelister() { return autoRelister; }
+    public TraderConfig getConfig() { return config; }
+    public double getCurrentRecommendedPrice() { return effectivePrice(); }
+}

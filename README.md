@@ -60,6 +60,9 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader active <sayı>`** | Sayı | Aktif ilan sayısını eşitler *(Örn: `/trader active 0`)* |
 | **`/trader reset`** | `[TAB]` | İlan sayacını sıfırlar |
 | **`/trader floor <fiyat>`** | Sayı | Taban fiyat koruması koyar *(Zararına satış engeli)* |
+| **`/trader undercut on\|off`** | `[TAB]` | Piyasayı takip et *(varsayılan)* ya da `/trader price` fiyatını sabitle |
+| **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
+| **`/trader reload`** | `[TAB]` | Ayar dosyasını diskten yeniden okur |
 | **`/trader status`** | `[TAB]` | Anlık durumu, aktif slotları ve toplam kasayı gösterir |
 | **`/trader help`** | `[TAB]` | Oyun içi detaylı kullanım rehberini açar |
 
@@ -94,18 +97,41 @@ com.donutsmp.trader/
 ## 📦 Derleme ve Kurulum
 
 ### Gereksinimler
-* **Java:** OpenJDK 25 (Azul Zulu 25 veya üstü)
-* **Minecraft:** 26.2 (Fabric Loader 0.19.3)
-* **Fabric API:** 0.158.0+26.2
+* **Minecraft:** 26.2 (Fabric Loader 0.19.3, Fabric API 0.158.0+26.2)
+* **Java:** 25+ *(Gradle/Loom gerekli JDK'yi kendisi indirir)*
 
-### Derleme Adımları
-```powershell
-# Projeyi derleyin ve JAR paketini oluşturun:
-.\build.ps1
+26.2 obfuscate edilmeden dağıtıldığı için Yarn mapping'i yoktur; proje Mojang
+isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
+
+### Derleme
+```bash
+./gradlew build      # Windows: .\build.ps1
 ```
-Üretilen `build/libs/donutsmp-trader-1.0.0.jar` dosyasını Minecraft `mods` klasörünüze taşıyınız.
+Çıktı: `build/libs/donutsmp-trader-1.0.0.jar`
+
+### Kurulum
+Jar'ı Minecraft **kapalıyken** profilinizin `mods` klasörüne kopyalayın.
+macOS'ta:
+```bash
+./install.sh "Fabric 26.2"
+```
+Çalışan bir oyunun altında jar'ı değiştirmeyin: JVM zip'i açık tutar ve oyun
+`ZipException` ile çöker.
+
+### Testler
+```bash
+./gradlew test       # 21 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+```
 
 ---
+
+## ⚠️ Bilinen Sınırlar
+
+| Konu | Durum |
+| :--- | :--- |
+| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/trader active <sayı>` ile elle eşitleyin. |
+| **`AutoRelister`** | Fiyat kırılmasını tespit eder ve loglar, ancak `/ah listings` menüsünden ilanı **otomatik iptal edip yeniden listelemez**. Açık `/ah` menüsünde rakip fiyatı okunup satış hedefi düşürülür. |
+| **Onay ekranı** | `findConfirmButtonSlot` yazıldı ama akışa bağlı değil; `/ah sell` sonrası onay penceresini elle kapatmanız gerekebilir. |
 
 ## 👥 Geliştiriciler & Katkıda Bulunanlar
 * **Burak Amasya** ([@BurakAmasyaa](https://github.com/BurakAmasyaa))

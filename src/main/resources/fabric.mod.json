@@ -1,12 +1,14 @@
 {
   "schemaVersion": 1,
   "id": "donutsmp_trader",
-  "version": "1.0.0",
+  "version": "${version}",
   "name": "DonutSMP Trader",
-  "description": "Automated AH Arbitrage & Sniper Mod for DonutSMP",
+  "description": "DonutSMP icin otonom split-seller: lot bolme, 18 slot takibi ve auto-undercut.",
   "authors": [
-    "Kaan"
+    "Kaan",
+    "Burak Amasya"
   ],
+  "license": "MIT",
   "environment": "client",
   "entrypoints": {
     "client": [
@@ -14,7 +16,9 @@
     ]
   },
   "depends": {
-    "fabricloader": ">=0.15.0",
-    "minecraft": "*"
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "~${minecraft_version}",
+    "java": ">=25"
   }
 }

@@ -1,26 +1,39 @@
 package com.donutsmp.trader.market;
 
+import com.donutsmp.trader.api.AhPriceParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayDeque;
 import java.util.Queue;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class AhListingManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("DonutTrader-ListingManager");
 
-    // DonutSMP SatÄ±ÅŸ MesajÄ± KalÄ±plarÄ±
-    private static final Pattern SALE_PATTERN = Pattern.compile(
-            "(?i)(?:bought|sold|purchased|satÄ±ldÄ±|satÄ±n aldÄ±).*?\\$?([0-9]{1,3}(?:[.,][0-9]{3})*|[0-9]+(?:\\s*[km])?)",
-            Pattern.CASE_INSENSITIVE
+    /**
+     * Sohbet bildirimleri yalnızca BİZİM ilanımızı ilgilendiriyorsa sayaca işler.
+     * DonutSMP satışları herkese duyurur; "sold" geçen her satırı saymak
+     * aktif slot sayacını başkalarının işlemleriyle kaydırır.
+     */
+    private static final Pattern MINE_PATTERN = Pattern.compile(
+            "(?i)\\b(your|you)\\b|senin|sizin|ilanınız|eşyanız"
     );
 
-    // Ä°lan Ä°ptal / Geri Ã‡ekme MesajÄ± KalÄ±plarÄ±
+    private static final Pattern SALE_KEYWORDS = Pattern.compile(
+            "(?i)\\b(?:bought|sold|purchased)\\b|satıldı"
+    );
+
     private static final Pattern CANCEL_PATTERN = Pattern.compile(
-            "(?i)(?:cancelled|canceled|removed|collected|reclaimed|expired|iptal|Ã§ekildi)",
-            Pattern.CASE_INSENSITIVE
+            "(?i)\\b(?:cancelled|canceled|removed|collected|reclaimed|expired)\\b|iptal|geri çekildi"
+    );
+
+    private static final Pattern COMBAT_PATTERN = Pattern.compile(
+            "(?i)(?:cannot|can't|can not|unable to).{0,40}combat|(?:while|are) in combat|savaşta"
+    );
+
+    private static final Pattern LIMIT_PATTERN = Pattern.compile(
+            "(?i)too many (?:listed |active )?items|listing limit|reached .{0,20}limit|maximum .{0,20}listings"
     );
 
     public static class ListingTask {
@@ -54,7 +67,7 @@ public class AhListingManager {
     private int maxSlots = 18;
     private int activeListings = 0;
     private boolean isLimitReached = false;
-    private long combatUntil = 0; // SavaÅŸ sÃ¼resi korumasÄ±
+    private long combatUntil = 0; // Savaş süresi koruması
     private long totalEarned = 0;
     private int itemsSold = 0;
     private State currentState = State.IDLE;
@@ -71,12 +84,12 @@ public class AhListingManager {
 
     public static String stripColorCodes(String input) {
         if (input == null) return "";
-        return input.replaceAll("(?i)Â§[0-9a-fk-or]", "").trim();
+        return input.replaceAll("(?i)§[0-9a-fk-or]", "").trim();
     }
 
     public synchronized boolean canListMore() {
         if (System.currentTimeMillis() < combatUntil) {
-            return false; // SavaÅŸta iken komut gÃ¶nderilemez
+            return false; // Savaşta iken komut gönderilemez
         }
         return !isLimitReached && activeListings < maxSlots;
     }
@@ -129,70 +142,52 @@ public class AhListingManager {
         if (rawMessage == null || rawMessage.trim().isEmpty()) return false;
 
         String cleanMessage = stripColorCodes(rawMessage);
-        String lower = cleanMessage.toLowerCase();
 
-        // 1. SavaÅŸ / Combat Tespiti ("You cannot do this in combat")
-        if (lower.contains("cannot do this in combat") || lower.contains("in combat") || lower.contains("savaÅŸta")) {
-            this.combatUntil = System.currentTimeMillis() + 20000; // 20 saniye savaÅŸ molasÄ±
-            LOGGER.warn("[SAVAS KORUMASI] SavaÅŸta olunduÄŸu tespit edildi. 20 saniye iÅŸlem durduruldu.");
+        if (COMBAT_PATTERN.matcher(cleanMessage).find()) {
+            this.combatUntil = System.currentTimeMillis() + 20000;
+            LOGGER.warn("[SAVAS KORUMASI] Savaşta olunduğu tespit edildi. 20 saniye işlem durduruldu.");
             return true;
         }
 
-        // 2. DonutSMP Limit Dolu UyarÄ±sÄ±
-        if (lower.contains("too many listed items") || lower.contains("too many")
-                || lower.contains("maximum") || lower.contains("limit reached") || lower.contains("cannot list")) {
+        if (LIMIT_PATTERN.matcher(cleanMessage).find()) {
             this.activeListings = this.maxSlots;
             this.isLimitReached = true;
             this.currentState = State.IDLE;
-            LOGGER.warn("[LIMIT DOLU] Sunucu ilan sÄ±nÄ±rÄ±na ulaÅŸÄ±ldÄ± (18/18). Yeni satÄ±ÅŸ bekleniyor.");
+            LOGGER.warn("[LIMIT DOLU] Sunucu ilan sınırına ulaşıldı ({}/{}). Yeni satış bekleniyor.", activeListings, maxSlots);
             return true;
         }
 
-        // 3. SatÄ±ÅŸ MesajÄ± (Slot boÅŸalÄ±r, para eklenir, limit kalkar)
-        if (lower.contains("bought your") || lower.contains("bought") || lower.contains("sold")
-                || lower.contains("purchased") || lower.contains("satÄ±ldÄ±")) {
-            Matcher saleMatcher = SALE_PATTERN.matcher(cleanMessage);
-            if (saleMatcher.find()) {
-                String priceStr = saleMatcher.group(1).replace(",", "").replace(".", "").trim();
-                try {
-                    long multiplier = 1;
-                    if (priceStr.toLowerCase().endsWith("k")) {
-                        multiplier = 1000;
-                        priceStr = priceStr.substring(0, priceStr.length() - 1).trim();
-                    } else if (priceStr.toLowerCase().endsWith("m")) {
-                        multiplier = 1000000;
-                        priceStr = priceStr.substring(0, priceStr.length() - 1).trim();
-                    }
-                    long price = Long.parseLong(priceStr) * multiplier;
-                    this.totalEarned += price;
-                } catch (NumberFormatException ignored) {
-                }
+        boolean mine = MINE_PATTERN.matcher(cleanMessage).find();
+        if (!mine) return false;
+
+        if (SALE_KEYWORDS.matcher(cleanMessage).find()) {
+            double price = AhPriceParser.parsePrice(cleanMessage);
+            if (price > 0) {
+                this.totalEarned += (long) price;
             }
 
             this.itemsSold++;
-            if (this.activeListings > 0) {
-                this.activeListings--;
-            }
-            this.isLimitReached = false;
-            this.currentState = State.IDLE;
-            LOGGER.info("[SATIS BILDIRIMI] EÅŸya satÄ±ldÄ±! SatÄ±lan: {}x, Kasa: +${}, Aktif Slot: {}/{}",
+            releaseSlot();
+            LOGGER.info("[SATIS BILDIRIMI] Eşya satıldı! Satılan: {}x, Kasa: +${}, Aktif Slot: {}/{}",
                     itemsSold, totalEarned, activeListings, maxSlots);
             return true;
         }
 
-        // 4. Ä°ptal / Geri Ã‡ekme MesajÄ± (Slot boÅŸalÄ±r, limit kalkar)
-        Matcher cancelMatcher = CANCEL_PATTERN.matcher(cleanMessage);
-        if (cancelMatcher.find()) {
-            if (this.activeListings > 0) {
-                this.activeListings--;
-            }
-            this.isLimitReached = false;
-            this.currentState = State.IDLE;
-            LOGGER.info("[ILAN IPTAL] Ä°lan geri Ã§ekildi! Aktif Slot: {}/{}", activeListings, maxSlots);
+        if (CANCEL_PATTERN.matcher(cleanMessage).find()) {
+            releaseSlot();
+            LOGGER.info("[ILAN IPTAL] İlan geri çekildi! Aktif Slot: {}/{}", activeListings, maxSlots);
             return true;
         }
 
         return false;
+    }
+
+    private void releaseSlot() {
+        if (this.activeListings > 0) {
+            this.activeListings--;
+        }
+        this.isLimitReached = false;
+        this.currentState = State.IDLE;
     }
 
     public static int findConfirmButtonSlot(String[] itemNames, String[] displayNames) {
