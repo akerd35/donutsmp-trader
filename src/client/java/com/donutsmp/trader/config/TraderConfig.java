@@ -27,6 +27,7 @@ public class TraderConfig {
     public int clickDelayMs = 250;
     public int marketPollSeconds = 15;
     public boolean simulationMode = false;
+    public boolean dumpScreens = false;
 
     private static TraderConfig INSTANCE = null;
 
@@ -57,6 +58,7 @@ public class TraderConfig {
         live.clickDelayMs = fresh.clickDelayMs;
         live.marketPollSeconds = fresh.marketPollSeconds;
         live.simulationMode = fresh.simulationMode;
+        live.dumpScreens = fresh.dumpScreens;
         live.clamp();
         return live;
     }

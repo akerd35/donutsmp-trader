@@ -95,6 +95,9 @@ public class TraderCommands {
                 .then(ClientCommands.literal("sim")
                         .then(ClientCommands.literal("on").executes(context -> setSimulation(context.getSource(), true)))
                         .then(ClientCommands.literal("off").executes(context -> setSimulation(context.getSource(), false))))
+                .then(ClientCommands.literal("dump")
+                        .then(ClientCommands.literal("on").executes(context -> setDump(context.getSource(), true)))
+                        .then(ClientCommands.literal("off").executes(context -> setDump(context.getSource(), false))))
                 .then(ClientCommands.literal("update")
                         .executes(context -> checkUpdate(context.getSource())))
                 .then(ClientCommands.literal("reload")
@@ -269,6 +272,19 @@ public class TraderCommands {
             mod.getAutoRelister().setMinPriceFloor(config.minPriceFloor);
         }
         source.sendFeedback(Component.literal("§6[DonutTrader] §eTaban fiyat koruması güncellendi: §a$" + String.format("%.0f", config.minPriceFloor)));
+        return 1;
+    }
+
+    private static int setDump(FabricClientCommandSource source, boolean enabled) {
+        TraderConfig config = TraderConfig.get();
+        config.dumpScreens = enabled;
+        config.save();
+        if (enabled) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §eEkran kaydı §aAÇIK§e. Şimdi /ah ve /ah listings menülerini açın."));
+            source.sendFeedback(Component.literal("§7Kayıt dosyası: §f" + ScreenDump.file()));
+        } else {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §eEkran kaydı §cKAPALI§e."));
+        }
         return 1;
     }
 

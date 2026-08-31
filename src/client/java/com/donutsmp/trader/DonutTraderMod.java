@@ -4,6 +4,7 @@ import com.donutsmp.trader.api.AhPriceParser;
 import com.donutsmp.trader.api.DonutAuctionClient;
 import com.donutsmp.trader.config.TraderConfig;
 import com.donutsmp.trader.gui.TraderCommands;
+import com.donutsmp.trader.gui.ScreenDump;
 import com.donutsmp.trader.gui.TraderHud;
 import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.market.AhListingManager;
@@ -110,6 +111,9 @@ public class DonutTraderMod implements ClientModInitializer {
         try {
             ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
                 if (client.player == null || !(screen instanceof AbstractContainerScreen<?> containerScreen)) return;
+                if (config.dumpScreens) {
+                    ScreenDump.capture(screen.getTitle(), containerScreen.getMenu());
+                }
                 String title = screen.getTitle() == null ? "" : screen.getTitle().getString();
                 if (MY_LISTINGS_TITLE.matcher(title).find()) {
                     syncListingsFromScreen(client, containerScreen.getMenu());
