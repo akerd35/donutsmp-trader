@@ -10,6 +10,7 @@ import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.AhScreens;
 import com.donutsmp.trader.market.AutoRelister;
+import com.donutsmp.trader.market.MarketListing;
 import com.donutsmp.trader.market.Undercut;
 import com.donutsmp.trader.update.Updater;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -60,6 +61,19 @@ public class DonutTraderMod implements ClientModInitializer {
     private ScheduledExecutorService backgroundExecutor;
 
     private volatile double apiPrice = 35000.0;
+    /**
+     * Kendi astığımız fiyatlar.
+     *
+     * /ah listesinde kendi ilanımız da görünür. Onu rakip sayarsak her taramada
+     * kendi fiyatımızın altına ineriz ve fiyat dibe doğru spiral yapar.
+     */
+    private final java.util.Set<Long> ownPrices = java.util.Collections.newSetFromMap(new java.util.LinkedHashMap<>() {
+        @Override
+        protected boolean removeEldestEntry(java.util.Map.Entry<Long, Boolean> eldest) {
+            return size() > 64;
+        }
+    });
+
     private volatile double scanPrice = -1;
     private volatile long scanPriceAt = 0;
 
@@ -263,7 +277,9 @@ public class DonutTraderMod implements ClientModInitializer {
 
         List<Slot> slots = menu.slots;
         String target = DonutAuctionClient.normalizeItemName(config.targetItem);
+        String self = client.player.getGameProfile().name();
         double lowestCompetitor = Double.MAX_VALUE;
+        int skippedOwn = 0;
 
         int scanned = Math.min(45, slots.size());
         for (int i = 0; i < scanned; i++) {
@@ -273,22 +289,28 @@ public class DonutTraderMod implements ClientModInitializer {
             ItemLore lore = stack.get(DataComponents.LORE);
             if (lore == null) continue;
 
-            for (Component line : lore.lines()) {
-                double parsed = AhPriceParser.parsePrice(line.getString());
-                if (parsed > 0 && parsed < lowestCompetitor) {
-                    lowestCompetitor = parsed;
-                }
+            List<String> texts = lore.lines().stream().map(Component::getString).toList();
+            double price = MarketListing.competitorPrice(texts, self, ownPrices);
+            if (price < 0) {
+                skippedOwn++;
+                continue;
             }
+            if (price < lowestCompetitor) lowestCompetitor = price;
         }
 
-        if (lowestCompetitor == Double.MAX_VALUE || lowestCompetitor <= config.minPriceFloor) return;
+        if (lowestCompetitor == Double.MAX_VALUE) {
+            LOGGER.info("[DonutSMP Trader] Piyasada baska satici yok (kendi ilanimiz atlandi: {})", skippedOwn);
+            return;
+        }
+        if (lowestCompetitor <= config.minPriceFloor) return;
 
         double newOptimal = Undercut.target(lowestCompetitor, config.undercutAmount, config.undercutPercent, config.minPriceFloor);
         double previous = effectivePrice();
         scanPrice = newOptimal;
         scanPriceAt = System.currentTimeMillis();
 
-        LOGGER.info("[DonutSMP Trader] Piyasa: en ucuz rakip {} -> hedef {}", lowestCompetitor, newOptimal);
+        LOGGER.info("[DonutSMP Trader] Piyasa: en ucuz rakip {} -> hedef {} (kendi ilanimiz atlandi: {})",
+                lowestCompetitor, newOptimal, skippedOwn);
         if (Math.abs(newOptimal - previous) >= Math.max(1.0, previous * 0.01)) {
             client.player.sendSystemMessage(Component.literal(String.format(
                     "§6[DonutTrader] §aPiyasa tarandı! En ucuz rakip: §e$%,.0f §a-> Yeni satış hedefimiz: §6$%,.0f",
@@ -392,6 +414,7 @@ public class DonutTraderMod implements ClientModInitializer {
         }
 
         client.player.connection.sendCommand("ah sell " + sellPrice);
+        ownPrices.add(sellPrice);
         listingManager.onListingSent();
         verifyAt = now + VERIFY_AFTER_MS;
         verifySlot = selected;
