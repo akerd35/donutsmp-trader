@@ -10,6 +10,8 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import com.donutsmp.trader.update.Updater;
+import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
 import java.util.Arrays;
@@ -90,6 +92,8 @@ public class TraderCommands {
                 .then(ClientCommands.literal("sim")
                         .then(ClientCommands.literal("on").executes(context -> setSimulation(context.getSource(), true)))
                         .then(ClientCommands.literal("off").executes(context -> setSimulation(context.getSource(), false))))
+                .then(ClientCommands.literal("update")
+                        .executes(context -> checkUpdate(context.getSource())))
                 .then(ClientCommands.literal("reload")
                         .executes(context -> reloadConfig(context.getSource())))
         );
@@ -116,6 +120,7 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader floor <fiyat> §7-> Taban fiyat koruması §8(Zararına satış engeli)"));
         source.sendFeedback(Component.literal("  §f/trader undercut on|off §7-> Piyasayı takip et ya da sabit fiyat kullan"));
         source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
+        source.sendFeedback(Component.literal("  §f/trader update §7-> GitHub'daki son sürümü indirir §8(yeniden başlatınca uygulanır)"));
         source.sendFeedback(Component.literal("  §f/trader status §7-> Anlık durumu, aktif slotları ve toplam kazancı gösterir"));
         source.sendFeedback(Component.literal("§6§l======================================================"));
         return 1;
@@ -243,6 +248,21 @@ public class TraderCommands {
             mod.getAutoRelister().setMinPriceFloor(config.minPriceFloor);
         }
         source.sendFeedback(Component.literal("§6[DonutTrader] §eTaban fiyat koruması güncellendi: §a$" + String.format("%.0f", config.minPriceFloor)));
+        return 1;
+    }
+
+    private static int checkUpdate(FabricClientCommandSource source) {
+        Minecraft client = Minecraft.getInstance();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eSürüm kontrol ediliyor... §7(mevcut: " + Updater.currentVersion() + ")"));
+
+        Thread worker = new Thread(() -> Updater.run(line ->
+                client.execute(() -> {
+                    if (client.player != null) {
+                        client.player.sendSystemMessage(Component.literal("§6[DonutTrader] " + line));
+                    }
+                })), "DonutTrader-Updater");
+        worker.setDaemon(true);
+        worker.start();
         return 1;
     }
 

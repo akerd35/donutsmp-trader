@@ -62,6 +62,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader floor <fiyat>`** | Sayı | Taban fiyat koruması koyar *(Zararına satış engeli)* |
 | **`/trader undercut on\|off`** | `[TAB]` | Piyasayı takip et *(varsayılan)* ya da `/trader price` fiyatını sabitle |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
+| **`/trader update`** | `[TAB]` | GitHub'daki son sürümü indirir *(yeniden başlatınca uygulanır)* |
 | **`/trader reload`** | `[TAB]` | Ayar dosyasını diskten yeniden okur |
 | **`/trader status`** | `[TAB]` | Anlık durumu, aktif slotları ve toplam kasayı gösterir |
 | **`/trader help`** | `[TAB]` | Oyun içi detaylı kullanım rehberini açar |
@@ -118,9 +119,23 @@ macOS'ta:
 Çalışan bir oyunun altında jar'ı değiştirmeyin: JVM zip'i açık tutar ve oyun
 `ZipException` ile çöker.
 
+### Güncelleme
+Oyun içinde `/trader update`: GitHub Release'inden son jar'ı indirir, sha256'sını
+release'teki değerle karşılaştırır ve `<oyun klasörü>/donutsmp-trader-update/`
+içinde bekletir. Değişim oyun **kapanırken** yapılır — çalışan bir jar'ın
+üzerine yazılamaz. Eski jar silinemezse (Windows dosyayı kilitleyebilir)
+güncelleme uygulanmaz ve oyun eski sürümle sorunsuz açılmaya devam eder; jar'ı
+elle kopyalamanız yeterlidir.
+
+Yeni sürüm yayınlamak için etiket atmanız yeterli; `release.yml` derleyip jar'ı
+ve sha256'sını release'e ekler:
+```bash
+git tag v1.0.1 && git push origin v1.0.1
+```
+
 ### Testler
 ```bash
-./gradlew test       # 21 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+./gradlew test       # 30 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
 ```
 
 ---
