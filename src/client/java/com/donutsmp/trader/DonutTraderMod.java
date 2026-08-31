@@ -52,6 +52,15 @@ public class DonutTraderMod implements ClientModInitializer {
     /** Modun kendi açtığı piyasa ekranını beklediği süre. */
     private static final long MARKET_REQUEST_TIMEOUT_MS = 4000;
 
+    /**
+     * Arama komutu sunucudan sunucuya değişiyor ve tahmin tutmayınca mod fiyatı
+     * hiç okuyamıyor. Hangisinin menü açtığını denemek, doğru komutu sormaktan
+     * hızlı: her aday bir kez denenir, tutan config'e yazılır.
+     */
+    private static final String[] MARKET_COMMANDS = {
+            "ah search %s", "ah %s", "auction search %s", "ah browse %s", "ah sell search %s"
+    };
+
     private static DonutTraderMod INSTANCE;
 
     private DonutAuctionClient apiClient;
@@ -84,6 +93,8 @@ public class DonutTraderMod implements ClientModInitializer {
     private long marketRequestedAt = 0;
     private long nextMarketScanAt = 0;
     private int marketFailures = 0;
+    private int candidateIndex = 0;
+    private String triedCommand = null;
     private int lastSyncedListings = -1;
     private long verifyAt = 0;
     private int verifySlot = -1;
@@ -91,6 +102,7 @@ public class DonutTraderMod implements ClientModInitializer {
     private long lastActionTime = 0;
     private long lastCommandTime = 0;
     private long lastWarningTime = 0;
+    private long lastApiWarnAt = 0;
 
     @Override
     public void onInitializeClient() {
@@ -184,7 +196,7 @@ public class DonutTraderMod implements ClientModInitializer {
             scanMarketScreen(client, containerScreen.getMenu());
             if (requested) {
                 marketRequestedAt = 0;
-                marketFailures = 0;
+                onMarketCommandWorked(client);
                 client.player.closeContainer();
             }
         }
@@ -198,10 +210,15 @@ public class DonutTraderMod implements ClientModInitializer {
      * geçersiz komut göndermeye devam etmekten iyidir.
      */
     private void onMarketRequestFailed(Minecraft client) {
-        marketFailures++;
-        LOGGER.warn("[DonutSMP Trader] Piyasa ekrani acilmadi ({}. deneme): /{}",
-                marketFailures, String.format(config.marketCommand, config.targetItem));
+        LOGGER.warn("[DonutSMP Trader] Piyasa ekrani acilmadi: /{}",
+                triedCommand == null ? "?" : String.format(triedCommand, config.targetItem));
 
+        if (!config.marketCommandFound && candidateIndex + 1 < MARKET_COMMANDS.length) {
+            candidateIndex++;
+            return; // sıradaki adayı dene
+        }
+
+        marketFailures++;
         if (marketFailures < 3) return;
 
         config.autoScan = false;
@@ -230,11 +247,29 @@ public class DonutTraderMod implements ClientModInitializer {
         // ikisi aynı tick'te gidip sunucunun hız sınırına takılır.
         if (now - lastCommandTime < COMMAND_COOLDOWN_MS) return;
 
-        nextMarketScanAt = now + scanIntervalMs();
+        String template = config.marketCommandFound ? config.marketCommand : MARKET_COMMANDS[candidateIndex];
+        String command = String.format(template, config.targetItem);
+
+        nextMarketScanAt = now + (config.marketCommandFound ? scanIntervalMs() : 2000L);
         marketRequestedAt = now;
         lastCommandTime = now;
-        client.player.connection.sendCommand(String.format(config.marketCommand, config.targetItem));
-        LOGGER.info("[DonutSMP Trader] Piyasa soruldu: /{}", String.format(config.marketCommand, config.targetItem));
+        triedCommand = template;
+        client.player.connection.sendCommand(command);
+        LOGGER.info("[DonutSMP Trader] Piyasa soruldu: /{}", command);
+    }
+
+    /** Menü açıldı: denenen komut doğruymuş, kalıcı olarak onu kullan. */
+    private void onMarketCommandWorked(Minecraft client) {
+        marketFailures = 0;
+        if (config.marketCommandFound || triedCommand == null) return;
+
+        config.marketCommand = triedCommand;
+        config.marketCommandFound = true;
+        config.save();
+        if (client.player != null) {
+            client.player.sendSystemMessage(Component.literal(
+                    "§6[DonutTrader] §aPiyasa komutu bulundu: §f/" + String.format(triedCommand, config.targetItem)));
+        }
     }
 
     /**
@@ -405,6 +440,15 @@ public class DonutTraderMod implements ClientModInitializer {
 
         long sellPrice = (long) effectivePrice();
         if (sellPrice <= 0) return;
+
+        // Piyasa okunamadan API fiyatiyla listelemek sessizce yanlis fiyata
+        // satmaktir; oyuncu bunu ilanlar satilmayinca fark ediyor.
+        if (config.autoUndercut && !scanFresh() && now - lastApiWarnAt > 60_000) {
+            lastApiWarnAt = now;
+            client.player.sendSystemMessage(Component.literal(String.format(
+                    "§6[DonutTrader] §ePiyasa okunamadı, fiyat API'den: §f$%,d§e. Yanlışsa: §f/trader undercut off §e+ §f/trader price <fiyat>",
+                    sellPrice)));
+        }
 
         if (config.simulationMode) {
             warn(client, now, String.format("§6[DonutTrader] §e[SİMÜLASYON] /ah sell %d gönderilmedi (slot %d).", sellPrice, selected));

@@ -27,6 +27,7 @@ public class TraderConfig {
     public double undercutPercent = 0.0;
     public boolean autoScan = true;
     public String marketCommand = "ah search %s";
+    public boolean marketCommandFound = false;
     public int scanIntervalSeconds = 6;
     public int clickDelayMs = 250;
     public int marketPollSeconds = 15;
@@ -62,6 +63,7 @@ public class TraderConfig {
         live.undercutPercent = fresh.undercutPercent;
         live.autoScan = fresh.autoScan;
         live.marketCommand = fresh.marketCommand;
+        live.marketCommandFound = fresh.marketCommandFound;
         live.scanIntervalSeconds = fresh.scanIntervalSeconds;
         live.clickDelayMs = fresh.clickDelayMs;
         live.marketPollSeconds = fresh.marketPollSeconds;
