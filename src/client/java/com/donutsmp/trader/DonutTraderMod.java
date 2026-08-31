@@ -86,7 +86,7 @@ public class DonutTraderMod implements ClientModInitializer {
         this.config.save();
         this.apiClient = new DonutAuctionClient();
         this.listingManager = new AhListingManager(config.maxSlots);
-        this.autoRelister = new AutoRelister(apiClient, config.minPriceFloor, config.undercutPercent);
+        this.autoRelister = new AutoRelister(apiClient, config.minPriceFloor, config.undercutAmount, config.undercutPercent);
         this.apiPrice = config.fallbackPrice;
 
         LOGGER.info("[DonutSMP Trader] Mod baslatiliyor... Hedef: {} (Lot: {}x, Limit: {} slot)",
@@ -279,7 +279,7 @@ public class DonutTraderMod implements ClientModInitializer {
 
         if (lowestCompetitor == Double.MAX_VALUE || lowestCompetitor <= config.minPriceFloor) return;
 
-        double newOptimal = Undercut.target(lowestCompetitor, config.undercutPercent, config.minPriceFloor);
+        double newOptimal = Undercut.target(lowestCompetitor, config.undercutAmount, config.undercutPercent, config.minPriceFloor);
         double previous = effectivePrice();
         scanPrice = newOptimal;
         scanPriceAt = System.currentTimeMillis();
@@ -455,6 +455,7 @@ public class DonutTraderMod implements ClientModInitializer {
                     config.lotSize,
                     config.fallbackPrice,
                     config.minPriceFloor,
+                    config.undercutAmount,
                     config.undercutPercent
             );
         } catch (Exception e) {

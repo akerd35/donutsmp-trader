@@ -124,7 +124,7 @@ public class DonutAuctionClient {
     }
 
     public double calculateOptimalSellPrice(String itemName, int lotSize, double defaultFallbackPrice,
-                                            double minimumPriceFloor, double undercutPercent) {
+                                            double minimumPriceFloor, double undercutAmount, double undercutPercent) {
         TickerItem ticker = getCheapestListing(itemName);
         if (ticker == null || ticker.getListingPrice() <= 0) {
             return Math.max(defaultFallbackPrice, minimumPriceFloor);
@@ -137,6 +137,6 @@ public class DonutAuctionClient {
             competitorPrice = ticker.getListingPrice();
         }
 
-        return Undercut.target(competitorPrice, undercutPercent, minimumPriceFloor);
+        return Undercut.target(competitorPrice, undercutAmount, undercutPercent, minimumPriceFloor);
     }
 }

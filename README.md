@@ -30,7 +30,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 
 ### 2. 📡 Canlı Piyasa API'si & Canlı In-Game Lore Tarayıcısı
 * **Web API (`donut.auction/v2/`):** 45 ana ürünün (Totem, Su Kovası, Shulker vb.) anlık en ucuz fiyatlarını ve likiditelerini çeker.
-* **In-Game AH Tarayıcısı:** `/ah` menüsü açıldığında rakiplerin fiyatlarını lore üzerinden tarar ve otomatik olarak rakibin **%0.1 altına** fiyat belirler *(ayarlanabilir; en az 1$ altına iner)*.
+* **In-Game AH Tarayıcısı:** `/ah` menüsü açıldığında rakiplerin fiyatlarını lore üzerinden tarar ve otomatik olarak rakibin **1$ altına** fiyat belirler *(sabit tutar ya da yüzde olarak ayarlanabilir)*.
 * **Taban Fiyat Koruması (`minPriceFloor`):** Belirlediğiniz taban fiyatın altına asla inmez (zararına satış engeli).
 
 ### 3. 🤖 Tam Otonom & Sunucu Tabanlı 18-Slot Yönetimi
@@ -62,7 +62,8 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader reset`** | `[TAB]` | İlan sayacını sıfırlar |
 | **`/trader floor <fiyat>`** | Sayı | Taban fiyat koruması koyar *(Zararına satış engeli)* |
 | **`/trader undercut on\|off`** | `[TAB]` | Piyasayı takip et *(varsayılan)* ya da `/trader price` fiyatını sabitle |
-| **`/trader undercut <yüzde>`** | Sayı | Rakibin ne kadar altına inileceği *(Varsayılan: %0.1 — rakip 10.000 ise 9.990)* |
+| **`/trader undercut <dolar>`** | Sayı | Rakipten kaç dolar ucuz *(Varsayılan: 1 — rakip 10.000 ise 9.999)* |
+| **`/trader undercut percent <yüzde>`** | Sayı | Sabit yerine yüzdesel fark *(büyük olan uygulanır)* |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
 | **`/trader dump on\|off`** | `[TAB]` | Açılan menülerin yapısını dosyaya yazar *(geliştirme için)* |
 | **`/trader update`** | `[TAB]` | GitHub'daki son sürümü indirir *(yeniden başlatınca uygulanır)* |
@@ -128,7 +129,7 @@ macOS'ta:
 /trader fullauto ladder
 ```
 Gerisi otomatiktir: mod piyasayı kendisi sorar (`/ah search <eşya>`), en ucuz
-rakibin %0.1 altına fiyat belirler, 64'lük yığından lot ayırır ve slot dolana
+rakibin 1$ altına fiyat belirler, 64'lük yığından lot ayırır ve slot dolana
 kadar listeler. Diğer komutların hepsi ince ayar içindir.
 
 Mod piyasayı **30 saniyede bir** kendisi sorup fiyatı yeniden hesaplar
@@ -154,7 +155,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### Testler
 ```bash
-./gradlew test       # 34 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+./gradlew test       # 41 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
 ```
 
 ---

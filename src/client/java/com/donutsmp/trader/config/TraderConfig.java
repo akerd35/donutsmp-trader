@@ -23,7 +23,8 @@ public class TraderConfig {
     public double fallbackPrice = 35000.0;
     public double minPriceFloor = 5000.0;
     public boolean autoUndercut = true;
-    public double undercutPercent = 0.1;
+    public double undercutAmount = 1.0;
+    public double undercutPercent = 0.0;
     public boolean autoScan = true;
     public String marketCommand = "ah search %s";
     public int scanIntervalSeconds = 30;
@@ -57,6 +58,7 @@ public class TraderConfig {
         live.fallbackPrice = fresh.fallbackPrice;
         live.minPriceFloor = fresh.minPriceFloor;
         live.autoUndercut = fresh.autoUndercut;
+        live.undercutAmount = fresh.undercutAmount;
         live.undercutPercent = fresh.undercutPercent;
         live.autoScan = fresh.autoScan;
         live.marketCommand = fresh.marketCommand;
@@ -92,6 +94,7 @@ public class TraderConfig {
         lotSize = Math.max(1, Math.min(64, lotSize));
         minPriceFloor = Math.max(0.0, minPriceFloor);
         fallbackPrice = Math.max(minPriceFloor, fallbackPrice);
+        undercutAmount = Math.max(0.0, undercutAmount);
         undercutPercent = Math.max(0.0, Math.min(50.0, undercutPercent));
         if (marketCommand == null || marketCommand.isBlank() || !marketCommand.contains("%s")) {
             marketCommand = "ah search %s";

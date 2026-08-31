@@ -63,15 +63,17 @@ public class AutoRelister {
 
     private final DonutAuctionClient apiClient;
     private double minPriceFloor = 5000.0; // Taban fiyat koruması (Zararına satış engeli)
-    private double undercutPercent = 0.1;
+    private double undercutAmount = 1.0;
+    private double undercutPercent = 0.0;
 
     public AutoRelister(DonutAuctionClient apiClient) {
         this.apiClient = apiClient;
     }
 
-    public AutoRelister(DonutAuctionClient apiClient, double minPriceFloor, double undercutPercent) {
+    public AutoRelister(DonutAuctionClient apiClient, double minPriceFloor, double undercutAmount, double undercutPercent) {
         this.apiClient = apiClient;
         this.minPriceFloor = minPriceFloor;
+        this.undercutAmount = undercutAmount;
         this.undercutPercent = undercutPercent;
     }
 
@@ -92,7 +94,7 @@ public class AutoRelister {
 
             // Fiyatımız kırılmışsa rakibin altına in
             if (myUnitPrice > competitorUnitPrice) {
-                double targetUnitPrice = Undercut.target(competitorUnitPrice, undercutPercent, minPriceFloor);
+                double targetUnitPrice = Undercut.target(competitorUnitPrice, undercutAmount, undercutPercent, minPriceFloor);
 
                 if (targetUnitPrice < myUnitPrice) {
                     listing.isUndercut = true;
@@ -129,6 +131,6 @@ public class AutoRelister {
     }
 
     public double getMinPriceFloor() { return minPriceFloor; }
-    public void setUndercutPercent(double percent) { this.undercutPercent = percent; }
+    public void setUndercut(double amount, double percent) { this.undercutAmount = amount; this.undercutPercent = percent; }
     public void setMinPriceFloor(double minPriceFloor) { this.minPriceFloor = minPriceFloor; }
 }
