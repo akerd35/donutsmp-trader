@@ -34,6 +34,15 @@ public class TraderConfig {
     public boolean simulationMode = false;
     public boolean dumpScreens = false;
 
+    // autoplus: ucuz ilanları alıp daha pahalıya asma
+    public boolean flipEnabled = false;
+    public double flipBuyBelow = 0.0;
+    public double flipSellAt = 0.0;
+    public double flipBudget = 1_000_000.0;
+    public double flipMinMargin = 1000.0;
+    /** Gerçekten tıklamak için /trader autoplus arm gerekir; para harcayan tek yol budur. */
+    public boolean flipArmed = false;
+
     private static TraderConfig INSTANCE = null;
 
     public static Path path() {
@@ -69,6 +78,12 @@ public class TraderConfig {
         live.marketPollSeconds = fresh.marketPollSeconds;
         live.simulationMode = fresh.simulationMode;
         live.dumpScreens = fresh.dumpScreens;
+        live.flipEnabled = fresh.flipEnabled;
+        live.flipBuyBelow = fresh.flipBuyBelow;
+        live.flipSellAt = fresh.flipSellAt;
+        live.flipBudget = fresh.flipBudget;
+        live.flipMinMargin = fresh.flipMinMargin;
+        live.flipArmed = fresh.flipArmed;
         live.clamp();
         return live;
     }
@@ -102,6 +117,11 @@ public class TraderConfig {
             marketCommand = "ah search %s";
         }
         scanIntervalSeconds = Math.max(3, Math.min(600, scanIntervalSeconds));
+        flipBuyBelow = Math.max(0.0, flipBuyBelow);
+        flipSellAt = Math.max(0.0, flipSellAt);
+        flipBudget = Math.max(0.0, flipBudget);
+        flipMinMargin = Math.max(0.0, flipMinMargin);
+        if (flipSellAt > 0 && flipSellAt <= flipBuyBelow) flipEnabled = false;
         clickDelayMs = Math.max(0, clickDelayMs);
         marketPollSeconds = Math.max(5, marketPollSeconds);
     }

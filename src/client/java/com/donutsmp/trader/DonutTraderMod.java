@@ -10,6 +10,7 @@ import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.AhScreens;
 import com.donutsmp.trader.market.AutoRelister;
+import com.donutsmp.trader.market.FlipPlanner;
 import com.donutsmp.trader.market.MarketListing;
 import com.donutsmp.trader.market.Undercut;
 import com.donutsmp.trader.update.Updater;
@@ -27,6 +28,7 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.ItemLore;
@@ -103,6 +105,8 @@ public class DonutTraderMod implements ClientModInitializer {
     private long lastCommandTime = 0;
     private long lastWarningTime = 0;
     private long lastApiWarnAt = 0;
+    private long lastFlipReportAt = 0;
+    private double flipSpent = 0;
 
     @Override
     public void onInitializeClient() {
@@ -235,6 +239,49 @@ public class DonutTraderMod implements ClientModInitializer {
     }
 
     /**
+     * Ucuz ilanları alır.
+     *
+     * Tıklamak para harcar, bu yüzden varsayılan olarak yalnızca ne alacağını
+     * söyler. Gerçekten satın alması için /trader autoplus arm gerekir.
+     */
+    private void handleFlip(Minecraft client, AbstractContainerMenu menu, List<FlipPlanner.Offer> offers) {
+        List<FlipPlanner.Buy> picks = FlipPlanner.plan(offers, config.flipBuyBelow, config.flipSellAt,
+                Math.max(0, config.flipBudget - flipSpent), config.flipMinMargin);
+        if (picks.isEmpty()) return;
+
+        FlipPlanner.Buy first = picks.get(0);
+
+        if (!config.flipArmed) {
+            if (System.currentTimeMillis() - lastFlipReportAt > 15_000) {
+                lastFlipReportAt = System.currentTimeMillis();
+                client.player.sendSystemMessage(Component.literal(String.format(
+                        "§6[DonutTrader] §e[KURU] §f%d §eucuz ilan bulundu, en ucuzu §f$%,.0f §e(slot %d). Toplam $%,.0f -> beklenen kâr $%,.0f",
+                        picks.size(), first.price(), first.slot(),
+                        FlipPlanner.totalCost(picks), FlipPlanner.expectedProfit(picks))));
+                client.player.sendSystemMessage(Component.literal(
+                        "§7Gerçekten alması için: §f/trader autoplus arm"));
+            }
+            return;
+        }
+
+        flipSpent += first.price();
+        client.gameMode.handleContainerInput(menu.containerId, first.slot(), 0, ContainerInput.PICKUP, client.player);
+        LOGGER.info("[DonutSMP Trader] Alim: slot {} @ {} (harcanan {}/{})",
+                first.slot(), first.price(), flipSpent, config.flipBudget);
+        client.player.sendSystemMessage(Component.literal(String.format(
+                "§6[DonutTrader] §aAlındı: §f$%,.0f §7(bütçe: $%,.0f/$%,.0f)",
+                first.price(), flipSpent, config.flipBudget)));
+    }
+
+    public void resetFlipSpend() {
+        flipSpent = 0;
+    }
+
+    public double getFlipSpent() {
+        return flipSpent;
+    }
+
+    /**
      * Piyasa fiyatını modun kendisi sorar.
      *
      * Oyuncunun /ah menüsünü elle açmasını beklemek fiyatı API'ye bağımlı
@@ -315,6 +362,7 @@ public class DonutTraderMod implements ClientModInitializer {
         String self = client.player.getGameProfile().name();
         double lowestCompetitor = Double.MAX_VALUE;
         int skippedOwn = 0;
+        List<FlipPlanner.Offer> offers = new java.util.ArrayList<>();
 
         int scanned = Math.min(45, slots.size());
         for (int i = 0; i < scanned; i++) {
@@ -330,7 +378,12 @@ public class DonutTraderMod implements ClientModInitializer {
                 skippedOwn++;
                 continue;
             }
+            offers.add(new FlipPlanner.Offer(i, price));
             if (price < lowestCompetitor) lowestCompetitor = price;
+        }
+
+        if (config.flipEnabled) {
+            handleFlip(client, menu, offers);
         }
 
         if (lowestCompetitor == Double.MAX_VALUE) {
@@ -541,6 +594,9 @@ public class DonutTraderMod implements ClientModInitializer {
      * API fiyatına kilitler ve ucuza sattırır.
      */
     public double effectivePrice() {
+        if (config.flipEnabled && config.flipSellAt > 0) {
+            return Math.max(config.flipSellAt, config.minPriceFloor);
+        }
         if (!config.autoUndercut) {
             return Math.max(config.fallbackPrice, config.minPriceFloor);
         }
