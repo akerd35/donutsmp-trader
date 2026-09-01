@@ -141,6 +141,12 @@ o süre içinde tarama tutmazsa API fiyatına düşer ama satış durmaz.
 Sunucunuzda arama komutu farklıysa `config/donutsmp_trader.json` içindeki
 `marketCommand` alanını değiştirin (varsayılan `ah search %s`).
 
+### Çalışma temposu
+Mod varsayılan olarak **5 dakika çalışıp 1 dakika duruyor** (`workSeconds`,
+`restSeconds`; 0 kapatır). Ayrıca üst üste başarısız olan bir listeleme her
+denemede iki katı bekletiliyor (3 sn'den 2 dakikaya kadar) — sunucuya aynı
+hatayı tekrar tekrar göndermemek için.
+
 ### Güncelleme
 Oyun içinde `/trader update`: GitHub Release'inden son jar'ı indirir, sha256'sını
 release'teki değerle karşılaştırır ve `<oyun klasörü>/donutsmp-trader-update/`
@@ -157,7 +163,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### Testler
 ```bash
-./gradlew test       # 59 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+./gradlew test       # 64 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
 ```
 
 ---

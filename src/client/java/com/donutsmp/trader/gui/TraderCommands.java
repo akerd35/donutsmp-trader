@@ -204,7 +204,10 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("§eHedef Eşya: §f" + config.targetItem + " §7(Lot Boyutu: §f" + config.lotSize + "x§7)"));
         source.sendFeedback(Component.literal("§eSatış Fiyatı: §a$" + String.format("%,.0f", recPrice) + " §7| §eTaban Fiyat: §a$" + String.format("%,.0f", config.minPriceFloor)));
         source.sendFeedback(Component.literal("§eAuto-undercut: " + (config.autoUndercut ? "§aAÇIK §7(" + undercutRule(config) + ")" : "§cKAPALI") + (config.simulationMode ? " §7| §eSimülasyon: §eAÇIK" : "")));
-        source.sendFeedback(Component.literal("§eMaksimum Slot: §f" + config.maxSlots));
+        source.sendFeedback(Component.literal("§eMaksimum Slot: §f" + config.maxSlots
+                + (config.workSeconds > 0 && config.restSeconds > 0
+                ? " §7| §eDöngü: §f" + config.workSeconds + "sn çalış / " + config.restSeconds + "sn mola"
+                : "")));
         if (lm != null) {
             source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots() + " §7| §eKuyruk: §f" + lm.getQueueSize()));
             source.sendFeedback(Component.literal("§eToplam Kasa Kazancı: §a+$" + String.format("%,d", lm.getTotalEarned()) + " §7(Satılan: §f" + lm.getItemsSold() + "x§7)"));

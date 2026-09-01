@@ -11,6 +11,7 @@ import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.AhScreens;
 import com.donutsmp.trader.market.AutoRelister;
 import com.donutsmp.trader.market.MarketListing;
+import com.donutsmp.trader.market.Pacing;
 import com.donutsmp.trader.market.PricePolicy;
 import com.donutsmp.trader.update.Updater;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -103,6 +104,10 @@ public class DonutTraderMod implements ClientModInitializer {
     private long lastCommandTime = 0;
     private long lastWarningTime = 0;
     private long lastApiWarnAt = 0;
+    private long cycleStart = 0;
+    private long restAnnouncedAt = 0;
+    private int consecutiveFailures = 0;
+    private long backoffUntil = 0;
 
     @Override
     public void onInitializeClient() {
@@ -395,6 +400,21 @@ public class DonutTraderMod implements ClientModInitializer {
         if (client.player.containerMenu != client.player.inventoryMenu) return;
 
         long now = System.currentTimeMillis();
+        if (cycleStart == 0) cycleStart = now;
+
+        long workMs = config.workSeconds * 1000L;
+        long restMs = config.restSeconds * 1000L;
+        if (Pacing.resting(now, cycleStart, workMs, restMs)) {
+            if (now - restAnnouncedAt > restMs) {
+                restAnnouncedAt = now;
+                long left = Pacing.restRemainingMs(now, cycleStart, workMs, restMs) / 1000;
+                client.player.sendSystemMessage(Component.literal(
+                        "§6[DonutTrader] §7Mola: §f" + left + " sn §7sonra devam edecek."));
+            }
+            return;
+        }
+
+        if (now < backoffUntil) return;
 
         if (listingManager.isInCombat()) {
             if (now - lastWarningTime > 6000) {
@@ -506,12 +526,16 @@ public class DonutTraderMod implements ClientModInitializer {
                 && stack.getCount() == expected;
 
         if (stillThere) {
+            consecutiveFailures++;
+            backoffUntil = System.currentTimeMillis()
+                    + Pacing.backoffMs(consecutiveFailures, 3000, 120_000);
             listingManager.onListingRejected();
             LOGGER.info("[DonutSMP Trader] Ilan girmedi, esya elde kaldi. Aktif: {}/{}",
                     listingManager.getActiveListings(), listingManager.getMaxSlots());
             warn(client, System.currentTimeMillis(),
                     "§6[DonutTrader] §eSatış gerçekleşmedi, eşya elinizde kaldı. Slot sayacı geri alındı.");
         } else {
+            consecutiveFailures = 0;
             listingManager.onListingVerified();
         }
     }

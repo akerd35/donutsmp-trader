@@ -38,6 +38,9 @@ public class TraderConfig {
     public int clickDelayMs = 250;
     public int marketPollSeconds = 15;
     public boolean simulationMode = false;
+    /** Bu kadar çalışıp dinlenir; 0 kapatır. */
+    public int workSeconds = 300;
+    public int restSeconds = 60;
     public boolean dumpScreens = false;
 
 
@@ -78,6 +81,8 @@ public class TraderConfig {
         live.clickDelayMs = fresh.clickDelayMs;
         live.marketPollSeconds = fresh.marketPollSeconds;
         live.simulationMode = fresh.simulationMode;
+        live.workSeconds = fresh.workSeconds;
+        live.restSeconds = fresh.restSeconds;
         live.dumpScreens = fresh.dumpScreens;
         live.clamp();
         return live;
@@ -110,6 +115,8 @@ public class TraderConfig {
         minRepriceStep = Math.max(0.0, minRepriceStep);
         minUndercutGap = Math.max(0.0, minUndercutGap);
         minCompetitorsBelow = Math.max(1, minCompetitorsBelow);
+        workSeconds = Math.max(0, workSeconds);
+        restSeconds = Math.max(0, restSeconds);
         undercutPercent = Math.max(0.0, Math.min(50.0, undercutPercent));
         if (marketCommand == null || marketCommand.isBlank() || !marketCommand.contains("%s")) {
             marketCommand = "ah search %s";
