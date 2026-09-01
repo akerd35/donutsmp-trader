@@ -7,6 +7,7 @@ import com.donutsmp.trader.gui.TraderCommands;
 import com.donutsmp.trader.gui.ScreenDump;
 import com.donutsmp.trader.gui.TraderHud;
 import com.donutsmp.trader.inventory.InventoryActionHelper;
+import com.donutsmp.trader.license.LicenseVerifier;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.AhScreens;
 import com.donutsmp.trader.market.AutoRelister;
@@ -108,6 +109,8 @@ public class DonutTraderMod implements ClientModInitializer {
     private long restAnnouncedAt = 0;
     private int consecutiveFailures = 0;
     private long backoffUntil = 0;
+    private LicenseVerifier.Result license;
+    private long lastLicenceWarnAt = 0;
 
     @Override
     public void onInitializeClient() {
@@ -402,6 +405,8 @@ public class DonutTraderMod implements ClientModInitializer {
         long now = System.currentTimeMillis();
         if (cycleStart == 0) cycleStart = now;
 
+        if (!licenceValid(client, now)) return;
+
         long workMs = config.workSeconds * 1000L;
         long restMs = config.restSeconds * 1000L;
         if (Pacing.resting(now, cycleStart, workMs, restMs)) {
@@ -538,6 +543,32 @@ public class DonutTraderMod implements ClientModInitializer {
             consecutiveFailures = 0;
             listingManager.onListingVerified();
         }
+    }
+
+    /** Lisans oyuncu adına bağlı olduğu için oyuna girmeden doğrulanamaz. */
+    private boolean licenceValid(Minecraft client, long now) {
+        if (license == null || !license.allowed()) {
+            license = LicenseVerifier.verify(config.licenseKey, LicenseVerifier.embeddedPublicKey(),
+                    client.player.getGameProfile().name(), java.time.LocalDate.now());
+        }
+
+        if (license.allowed()) return true;
+
+        if (now - lastLicenceWarnAt > 60_000) {
+            lastLicenceWarnAt = now;
+            client.player.sendSystemMessage(Component.literal("§6[DonutTrader] §cLisans geçersiz: §f" + license.message()));
+            client.player.sendSystemMessage(Component.literal("§7Anahtarı girmek için: §f/trader license <anahtar>"));
+        }
+        return false;
+    }
+
+    public LicenseVerifier.Result licenceStatus(String playerName) {
+        return LicenseVerifier.verify(config.licenseKey, LicenseVerifier.embeddedPublicKey(),
+                playerName, java.time.LocalDate.now());
+    }
+
+    public void clearLicenceCache() {
+        license = null;
     }
 
     private void warn(Minecraft client, long now, String message) {

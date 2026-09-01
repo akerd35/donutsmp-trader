@@ -3,6 +3,7 @@ package com.donutsmp.trader.gui;
 import com.donutsmp.trader.DonutTraderMod;
 import com.donutsmp.trader.config.TraderConfig;
 import com.donutsmp.trader.inventory.InventoryActionHelper;
+import com.donutsmp.trader.license.LicenseVerifier;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.Undercut;
 import com.mojang.brigadier.CommandDispatcher;
@@ -108,6 +109,10 @@ public class TraderCommands {
                 .then(ClientCommands.literal("dump")
                         .then(ClientCommands.literal("on").executes(context -> setDump(context.getSource(), true)))
                         .then(ClientCommands.literal("off").executes(context -> setDump(context.getSource(), false))))
+                .then(ClientCommands.literal("license")
+                        .executes(context -> showLicense(context.getSource()))
+                        .then(ClientCommands.argument("key", StringArgumentType.greedyString())
+                                .executes(context -> setLicense(context.getSource(), StringArgumentType.getString(context, "key")))))
                 .then(ClientCommands.literal("update")
                         .executes(context -> checkUpdate(context.getSource())))
                 .then(ClientCommands.literal("reload")
@@ -371,6 +376,28 @@ public class TraderCommands {
         } else {
             source.sendFeedback(Component.literal("§6[DonutTrader] §eEkran kaydı §cKAPALI§e."));
         }
+        return 1;
+    }
+
+    private static int setLicense(FabricClientCommandSource source, String key) {
+        TraderConfig config = TraderConfig.get();
+        config.licenseKey = key.trim();
+        config.save();
+
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) mod.clearLicenceCache();
+        return showLicense(source);
+    }
+
+    private static int showLicense(FabricClientCommandSource source) {
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        String name = Minecraft.getInstance().player != null
+                ? Minecraft.getInstance().player.getGameProfile().name() : "";
+        if (mod == null) return 0;
+
+        LicenseVerifier.Result result = mod.licenceStatus(name);
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eLisans: "
+                + (result.allowed() ? "§a" : "§c") + result.message()));
         return 1;
     }
 

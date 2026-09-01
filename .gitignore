@@ -9,3 +9,4 @@ out/
 .env
 /config/
 logs/
+private.key

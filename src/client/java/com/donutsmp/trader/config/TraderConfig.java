@@ -41,6 +41,7 @@ public class TraderConfig {
     /** Bu kadar çalışıp dinlenir; 0 kapatır. */
     public int workSeconds = 300;
     public int restSeconds = 60;
+    public String licenseKey = "";
     public boolean dumpScreens = false;
 
 
@@ -83,6 +84,7 @@ public class TraderConfig {
         live.simulationMode = fresh.simulationMode;
         live.workSeconds = fresh.workSeconds;
         live.restSeconds = fresh.restSeconds;
+        live.licenseKey = fresh.licenseKey;
         live.dumpScreens = fresh.dumpScreens;
         live.clamp();
         return live;
@@ -105,6 +107,7 @@ public class TraderConfig {
     }
 
     private void clamp() {
+        if (licenseKey == null) licenseKey = "";
         if (targetItem == null || targetItem.isBlank()) targetItem = "ladder";
         targetItem = targetItem.toLowerCase().replace("minecraft:", "").trim();
         maxSlots = Math.max(1, Math.min(54, maxSlots));

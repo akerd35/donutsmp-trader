@@ -1,0 +1,2 @@
+# Lisans dogrulama kapali.
+# Acmak icin: java tools/LicenseKeyGen.java genkey

@@ -66,6 +66,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader undercut percent <yüzde>`** | Sayı | Sabit yerine yüzdesel fark *(büyük olan uygulanır)* |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
 | **`/trader dump on\|off`** | `[TAB]` | Açılan menülerin yapısını dosyaya yazar *(geliştirme için)* |
+| **`/trader license <anahtar>`** | - | Lisans anahtarını girer |
 | **`/trader update`** | `[TAB]` | GitHub'daki son sürümü indirir *(yeniden başlatınca uygulanır)* |
 | **`/trader reload`** | `[TAB]` | Ayar dosyasını diskten yeniden okur |
 | **`/trader status`** | `[TAB]` | Anlık durumu, aktif slotları ve toplam kasayı gösterir |
@@ -147,6 +148,26 @@ Mod varsayılan olarak **5 dakika çalışıp 1 dakika duruyor** (`workSeconds`,
 denemede iki katı bekletiliyor (3 sn'den 2 dakikaya kadar) — sunucuya aynı
 hatayı tekrar tekrar göndermemek için.
 
+### Lisans
+
+Varsayılan derleme **lisanssız** çalışır. Dağıtım için imzalı anahtar sistemi:
+
+```bash
+java tools/LicenseKeyGen.java genkey                       # bir kez
+java tools/LicenseKeyGen.java sign "$(cat private.key)" Steve 30
+```
+
+`genkey` açık anahtarı `src/main/resources/license-pubkey.txt` içine yazar (jar'a
+gömülür) ve `private.key` üretir. **`private.key` sizde kalır, repoya girmez** —
+kaybolursa dağıtılmış bütün anahtarlar doğrulanamaz hale gelir.
+
+Anahtar oyuncu adına ve bitiş tarihine bağlıdır; `*` verirseniz herkese açıktır.
+Kullanıcı `/trader license <anahtar>` ile girer. Lisans geçersizse mod hiçbir
+işlem yapmaz.
+
+> İmza sahtelenemez ama kontrol istemcidedir: jar decompile edilip kontrol
+> çıkarılabilir. Bu sistem paylaşımı zorlaştırır, imkânsız kılmaz.
+
 ### Güncelleme
 Oyun içinde `/trader update`: GitHub Release'inden son jar'ı indirir, sha256'sını
 release'teki değerle karşılaştırır ve `<oyun klasörü>/donutsmp-trader-update/`
@@ -163,7 +184,7 @@ git tag v1.0.1 && git push origin v1.0.1
 
 ### Testler
 ```bash
-./gradlew test       # 64 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
+./gradlew test       # 74 test: fiyat ayrıştırıcı, slot sayacı, lot bölücü
 ```
 
 ---
