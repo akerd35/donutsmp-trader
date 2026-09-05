@@ -11,10 +11,11 @@ class AhListingManagerTest {
     /** 18 slotu da dolu bir yonetici. */
     private AhListingManager full() {
         AhListingManager manager = new AhListingManager(18);
-        while (manager.canListMore()) {
+        for (int i = 0; i < 18; i++) {
             manager.onListingSent();
             manager.onListingVerified();
         }
+        assertFalse(manager.canListMore(), "on sekiz ilandan sonra sayac dolu olmali");
         return manager;
     }
 
@@ -159,6 +160,77 @@ class AhListingManagerTest {
         manager.syncActiveListings(3);
         assertTrue(manager.canListMore(), "gercek 3/18 ise kilit kalkmali");
         assertEquals(3, manager.getActiveListings());
+    }
+
+    // ---------- sayac kaymasindan cikis ----------
+
+    /**
+     * Sayac dolu derken bile arada bir denenmeli.
+     *
+     * Olculdu: sayac 18/18'de takiliyken gercek 8 idi ve mod 5,5 dakika hic
+     * ilan acmadi. Karar sayacin degil sunucunun.
+     */
+    @Test
+    void afullCounterStillGetsARetryAfterTheWindow() {
+        AhListingManager manager = full();
+        long now = System.currentTimeMillis();
+
+        assertFalse(manager.canListMore(now), "hemen degil");
+        assertFalse(manager.canListMore(now + 14_000), "penceresi dolmadan degil");
+        assertTrue(manager.canListMore(now + AhListingManager.retryWhenFullMs() + 100),
+                "on bes saniye sonra yine denenmeli");
+    }
+
+    /** Deneme tuttuysa sayac yanilmis: hemen devam edebilmeli. */
+    @Test
+    void asuccessfulRetryUnblocksTheCounter() {
+        AhListingManager manager = full();
+        assertEquals(18, manager.getActiveListings());
+
+        manager.onListingSent();        // dolu sanirken deneme
+        manager.onListingVerified();    // tuttu
+
+        assertEquals(17, manager.getActiveListings(), "sayac gercegin ustundeymis");
+        assertTrue(manager.canListMore(), "beklemeden devam etmeli");
+    }
+
+    /**
+     * Normal listeleme sayaci azaltmamali.
+     *
+     * Kosulsuz azaltma sayacin sinira hic oturmamasina yol aciyordu; testte
+     * sonsuz donguye girdi, oyunda ise durmadan ilan acmaya calisirdi.
+     */
+    @Test
+    void anOrdinaryListingDoesNotWindTheCounterBack() {
+        AhListingManager manager = new AhListingManager(3);
+        for (int i = 0; i < 3; i++) {
+            manager.onListingSent();
+            manager.onListingVerified();
+        }
+        assertEquals(3, manager.getActiveListings());
+        assertFalse(manager.canListMore());
+    }
+
+    /** Sunucu "dolu" derse pencere reddin oldugu andan itibaren yeniden baslar. */
+    @Test
+    void theServersRefusalRestartsTheWindow() {
+        AhListingManager manager = full();
+        long window = AhListingManager.retryWhenFullMs();
+        long now = System.currentTimeMillis();
+        assertTrue(manager.canListMore(now + window + 100), "pencere dolunca denenebilirdi");
+
+        manager.onChatMessage("You have too many listed items!");
+
+        assertFalse(manager.canListMore(now + 1_000), "reddin hemen ardindan denenmez");
+        assertTrue(manager.canListMore(now + window + 5_000), "yeni pencere de dolunca yine denenir");
+    }
+
+    /** Bir satis yer acar: beklemeye gerek yok. */
+    @Test
+    void asaleReopensListingImmediately() {
+        AhListingManager manager = full();
+        manager.onChatMessage("Your Ladder sold for $9,000!");
+        assertTrue(manager.canListMore(), "satis sonrasi hemen listeleyebilmeli");
     }
 
     @Test

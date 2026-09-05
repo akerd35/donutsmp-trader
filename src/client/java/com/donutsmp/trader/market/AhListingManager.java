@@ -45,10 +45,26 @@ public class AhListingManager {
 
     private static final long PENDING_WINDOW_MS = 3000;
 
+    /**
+     * Sayaç dolu derken ne kadar sonra yine denenir.
+     *
+     * Sayaç sohbet bildirimlerinden yürüyor ve sunucu her satışı bildirmiyor;
+     * kaçan bildirim sayacı gerçeğin üstünde bırakıyor ve mod 18/18 sanıp
+     * duruyordu — ölçüldü, bir kere 5,5 dakika. Karar sayacın değil sunucunun:
+     * dolu görünsek bile arada bir denenir, sunucu reddederse süre yeniden
+     * başlar. Bedeli on beş saniyede bir reddedilen komut.
+     */
+    private static final long RETRY_WHEN_FULL_MS = 15_000;
+
     private int maxSlots = 18;
     private int activeListings = 0;
     private long pendingSince = 0;
     private boolean isLimitReached = false;
+    /** Sunucu "ilan sınırın doldu" dedi; bu ana kadar tekrar denenmez. */
+    private long limitUntil = 0;
+    private long lastAttemptAt = 0;
+    /** Bu deneme "sayaç dolu diyor ama yine de dene" denemesi miydi? */
+    private boolean probing = false;
     private long combatUntil = 0; // Savaş süresi koruması
     private long totalEarned = 0;
     private int itemsSold = 0;
@@ -67,11 +83,18 @@ public class AhListingManager {
     }
 
     public synchronized boolean canListMore() {
-        if (System.currentTimeMillis() < combatUntil) {
-            return false; // Savaşta iken komut gönderilemez
-        }
-        return !isLimitReached && activeListings < maxSlots;
+        return canListMore(System.currentTimeMillis());
     }
+
+    /** Saat disaridan verilebilsin ki on bes saniyelik pencere test edilebilsin. */
+    synchronized boolean canListMore(long now) {
+        if (now < combatUntil) return false;      // Savaşta iken komut gönderilemez
+        if (now < limitUntil) return false;       // Sunucu az önce reddetti
+        if (activeListings < maxSlots) return true;
+        return now - lastAttemptAt >= RETRY_WHEN_FULL_MS;
+    }
+
+    static long retryWhenFullMs() { return RETRY_WHEN_FULL_MS; }
 
     public synchronized void onListingAttempt() {
         this.activeListings = Math.min(maxSlots, this.activeListings + 1);
@@ -82,7 +105,9 @@ public class AhListingManager {
 
     /** Slotu şimdilik ayırır; sunucu reddederse geri alınır. */
     public synchronized void onListingSent() {
+        this.probing = activeListings >= maxSlots;
         onListingAttempt();
+        this.lastAttemptAt = System.currentTimeMillis();
         this.pendingSince = System.currentTimeMillis();
     }
 
@@ -95,10 +120,27 @@ public class AhListingManager {
         pendingSince = 0;
         if (activeListings > 0) activeListings--;
         this.isLimitReached = false;
+        this.limitUntil = 0;
     }
 
+    /**
+     * İlan gerçekten girdi.
+     *
+     * Sayaç dolu derken girdiyse sayaç yanılmış, yer varmış: bir eksiğe çekilir
+     * ki bir sonraki deneme on beş saniye beklemesin. Böylece gerçek sınıra
+     * kadar hızla dolar, orada sunucu "too many" der ve sayaç yerine oturur.
+     */
     public synchronized void onListingVerified() {
         pendingSince = 0;
+        limitUntil = 0;
+        // Yalnızca DENEME tuttuysa düzelt. Koşulsuz azaltmak sayacın dolu
+        // kalmasını imkânsız kılar: normal listeleme de her seferinde bir
+        // eksiltir ve sayaç sınıra hiç oturmaz.
+        if (probing && activeListings >= maxSlots) {
+            activeListings = Math.max(0, maxSlots - 1);
+            isLimitReached = false;
+        }
+        probing = false;
     }
 
     /** Reddedilen ilanı sayaçtan düşer. Pencere geçtiyse ilan gerçekten girmiştir. */
@@ -118,6 +160,7 @@ public class AhListingManager {
     public synchronized int syncActiveListings(int actual) {
         int before = this.activeListings;
         this.pendingSince = 0;
+        this.limitUntil = 0;
         setActiveListings(actual);
         return before;
     }
@@ -141,6 +184,7 @@ public class AhListingManager {
         if (LIMIT_PATTERN.matcher(cleanMessage).find()) {
             this.activeListings = this.maxSlots;
             this.isLimitReached = true;
+            this.limitUntil = System.currentTimeMillis() + RETRY_WHEN_FULL_MS;
             this.pendingSince = 0;
             LOGGER.warn("[LIMIT DOLU] Sunucu ilan sınırına ulaşıldı ({}/{}). Yeni satış bekleniyor.", activeListings, maxSlots);
             return true;
@@ -176,11 +220,13 @@ public class AhListingManager {
         return false;
     }
 
+    /** Bir ilan satıldı ya da geri çekildi: yer açıldı, beklemeye gerek yok. */
     private void releaseSlot() {
         if (this.activeListings > 0) {
             this.activeListings--;
         }
         this.isLimitReached = false;
+        this.limitUntil = 0;
     }
 
     // Getters & Setters
@@ -199,6 +245,9 @@ public class AhListingManager {
         this.activeListings = 0;
         this.pendingSince = 0;
         this.isLimitReached = false;
+        this.limitUntil = 0;
+        this.lastAttemptAt = 0;
+        this.probing = false;
         this.combatUntil = 0;
     }
 }
