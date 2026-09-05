@@ -248,7 +248,7 @@ public class TraderCommands {
                 ? "§cmola yok §7(kesintisiz)"
                 : "§f" + config.workSeconds + "sn çalış / " + config.restSeconds + "sn mola")));
         if (lm != null) {
-            source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots() + " §7| §eKuyruk: §f" + lm.getQueueSize()));
+            source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots()));
             source.sendFeedback(Component.literal("§eToplam Kasa Kazancı: §a+$" + String.format("%,d", lm.getTotalEarned()) + " §7(Satılan: §f" + lm.getItemsSold() + "x§7)"));
         }
         if (mod != null) {

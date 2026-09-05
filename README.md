@@ -23,7 +23,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 
 ## ✨ Temel Özellikler
 
-### 1. ⚡ Sıfır Kayıplı Deterministik Lot Bölücü (`InventorySplitter`)
+### 1. ⚡ Sıfır Kayıplı Deterministik Lot Bölücü (`InventoryActionHelper.splitToHotbar`)
 * 64'lük eşyaları 3 adımlı sanal tıklama algoritmasıyla (Sol tık al -> Sağ tıkla 1 adet bırak -> Sol tık kalanı iade et) böler.
 * Eşyaların yere düşmesini veya imleçte takılı kalmasını %100 engeller.
 * 64'lük yığının tamamının yanlışlıkla ucuza satılmasını imkansız kılar.
@@ -98,11 +98,20 @@ com.donutsmp.trader/
 │       ├── TickerItem.java      # Canlı pazar DTO
 │       └── ItemPrice.java       # Likidite & 24s satış hacmi DTO
 ├── inventory/
-│   ├── InventorySplitter.java   # 3 adımlı sanal lot bölme motoru
-│   └── InventoryActionHelper.java # Minecraft container slot taşıma yardımcısı
+│   └── InventoryActionHelper.java # Lot bölme (3 adımlı) ve slot arama
 ├── market/
 │   ├── AhListingManager.java    # 18-slot limit & chat bildirim yakalayıcı
-│   └── AutoRelister.java        # Fiyat kırılma & yeniden listeleme analizcisi
+│   ├── MarketListing.java       # Bir ilan bizim mi, takımın mı, rakibin mi
+│   ├── PricePolicy.java         # Fiyat ne zaman değişir
+│   ├── Undercut.java            # Rakibin ne kadar altına
+│   ├── Pacing.java              # Çalış/dur döngüsü ve hata sonrası bekleme
+│   └── AutoRelister.java        # YAZILDI AMA BAĞLI DEĞİL — aşağıdaki sınırlara bakın
+├── team/
+│   ├── Team.java                # Fiyatı kırılmayacak oyuncular
+│   ├── PeerState.java           # Arkadaşa gösterilen anlık durum
+│   ├── TeamLink.java            # Paylaşılan klasöre yazma/okuma
+│   ├── TeamBoard.java           # Takımın anlık tablosu
+│   └── TeamPrice.java           # Arkadaşın altına inmeme kuralı
 ├── gui/
 │   ├── TraderCommands.java      # Brigadier komutları ve akıllı Tab tamamlayıcı
 │   └── TraderHud.java           # Canlı HUD arayüzü
@@ -254,11 +263,11 @@ git tag v1.0.1 && git push origin v1.0.1
 | :--- | :--- |
 | **Ne zaman fiyat kırılır** | Rakip yoksa fiyat **değişmez**. Kırmak için iki şart birden: en az **3 ilan** (`minCompetitorsBelow`) altımızda olmalı **ve** en ucuzu bizden en az **$2.000** (`minUndercutGap`) ucuz olmalı. Piyasa yükselirse fiyat yükseltilir. |
 | **Menünün fiyat yuvarlaması** | AH, 11.999'u "11k" diye gösteriyor; okunan değer gerçeğinden 999'a kadar düşük olabilir. Yukarıdaki iki eşik bu gürültüyü emiyor, ayrıca kendi ilan tespiti yuvarlanmış fiyatları da eşleştiriyor. |
-| **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` bunu tespit edip logluyor; `/ah listings` menüsünden iptal edip yeniden koyma akışı yazılmadı. |
+| **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` sınıfı yazıldı ama **hiçbir yerden çağrılmıyor**: ne tespit ediyor ne logluyor. İptal edip yeniden koyma akışı da yazılmadı. |
 | **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/ah listings` menüsünü açmak sayacı gerçekle eşitler. |
 | **`/ah listings` başlık eşleşmesi** | Ekran, başlığında `your listings` / `my listings` / `ilanlar` geçtiğinde tanınır. Sunucudaki başlık farklıysa senkron çalışmaz — `/trader active <sayı>` ile elle eşitleyin. |
 | **Kendi ilanımızın ayırt edilmesi** | Tarama, lore'unda kullanıcı adınız geçen ilanları atlar; ad yazmıyorsa kendi astığımız fiyatlar (son 64 tanesi) atlanır. Sunucu satıcı adını lore'a hiç yazmıyorsa ve fiyatınıza eşit gerçek bir rakip varsa o rakip görülmez — fiyat düşmez, güvenli taraf. |
-| **Onay ekranı** | `findConfirmButtonSlot` yazıldı ama akışa bağlı değil; `/ah sell` sonrası onay penceresini elle kapatmanız gerekebilir. |
+| **Onay ekranı** | Onay penceresine basan bir akış yok; `/ah sell` sonrası pencereyi elle kapatmanız gerekebilir. |
 
 ## 👥 Geliştiriciler & Katkıda Bulunanlar
 * **Burak Amasya** ([@BurakAmasyaa](https://github.com/BurakAmasyaa))

@@ -4,42 +4,33 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AhListingManagerTest {
 
+    /** 18 slotu da dolu bir yonetici. */
     private AhListingManager full() {
         AhListingManager manager = new AhListingManager(18);
-        for (int i = 0; i < 20; i++) {
-            manager.offerTask(new AhListingManager.ListingTask("ladder", 1, 35000.0, 0));
-        }
-        while (manager.hasAvailableSlot()) {
-            AhListingManager.ListingTask task = manager.pollNextTask();
-            if (task == null) break;
-            manager.markCommandSent();
-            manager.onListingConfirmed();
+        while (manager.canListMore()) {
+            manager.onListingSent();
+            manager.onListingVerified();
         }
         return manager;
     }
 
     @Test
-    void stopsAtTheSlotLimit() {
-        AhListingManager manager = full();
-        assertEquals(18, manager.getActiveListings());
-        assertEquals(2, manager.getQueueSize());
-        assertFalse(manager.hasAvailableSlot());
-        assertNull(manager.pollNextTask());
-    }
+    void countsListingsUpToTheSlotLimit() {
+        AhListingManager manager = new AhListingManager(2);
+        assertTrue(manager.canListMore());
 
-    @Test
-    void ownSaleFreesASlotAndBanksThePrice() {
-        AhListingManager manager = full();
-        assertTrue(manager.onChatMessage("[Auction] Your item Ladder was sold to StevePvP for $35,000!"));
-        assertEquals(1, manager.getItemsSold());
-        assertEquals(35000L, manager.getTotalEarned());
-        assertEquals(17, manager.getActiveListings());
-        assertTrue(manager.hasAvailableSlot());
+        manager.onListingSent();
+        manager.onListingVerified();
+        assertTrue(manager.canListMore());
+
+        manager.onListingSent();
+        manager.onListingVerified();
+        assertFalse(manager.canListMore(), "limit dolunca yeni ilan yok");
+        assertEquals(2, manager.getActiveListings());
     }
 
     @Test
@@ -93,17 +84,6 @@ class AhListingManagerTest {
     }
 
     @Test
-    void findsTheGreenConfirmButton() {
-        String[] items = new String[27];
-        String[] displays = new String[27];
-        items[11] = "red_stained_glass_pane";
-        displays[11] = "Cancel";
-        items[15] = "lime_stained_glass_pane";
-        displays[15] = "Confirm Listing";
-        assertEquals(15, AhListingManager.findConfirmButtonSlot(items, displays));
-    }
-
-    @Test
     void rejectedListingDoesNotConsumeASlot() {
         AhListingManager manager = new AhListingManager(18);
         manager.onListingSent();
@@ -149,7 +129,7 @@ class AhListingManagerTest {
         AhListingManager manager = full();
         manager.resetAll();
         assertEquals(0, manager.getActiveListings());
-        assertEquals(0, manager.getQueueSize());
+        assertFalse(manager.isLimitReached());
         assertTrue(manager.canListMore());
     }
 }

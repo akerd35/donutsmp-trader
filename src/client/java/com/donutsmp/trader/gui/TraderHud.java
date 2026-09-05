@@ -50,8 +50,8 @@ public class TraderHud {
         }
 
         lines.add("§6§l[DonutSMP Trader] " + status);
-        lines.add(String.format("§e[Slotlar]: §f%d/%d Dolu §7| §eKuyruk: §f%d",
-                listingManager.getActiveListings(), listingManager.getMaxSlots(), listingManager.getQueueSize()));
+        lines.add(String.format("§e[Slotlar]: §f%d/%d Dolu",
+                listingManager.getActiveListings(), listingManager.getMaxSlots()));
         lines.add(String.format("§e[Hedef]: §f%dx %s §7| §eSatış Fiyatı: §a$%,.0f",
                 config.lotSize, config.targetItem, currentRecommendedPrice));
         lines.add(String.format("§e[Kasa]: §a+$%,d §7(Satılan: §f%dx§7)",
