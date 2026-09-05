@@ -14,6 +14,7 @@ import com.donutsmp.trader.market.AutoRelister;
 import com.donutsmp.trader.market.MarketListing;
 import com.donutsmp.trader.market.Pacing;
 import com.donutsmp.trader.market.PricePolicy;
+import com.donutsmp.trader.market.SellGate;
 import com.donutsmp.trader.team.PeerState;
 import com.donutsmp.trader.team.TeamBoard;
 import com.donutsmp.trader.team.TeamPrice;
@@ -117,6 +118,8 @@ public class DonutTraderMod implements ClientModInitializer {
     private long backoffUntil = 0;
     private LicenseVerifier.Result license;
     private long lastLicenceWarnAt = 0;
+    /** Kapının son verdiği cevap; /trader why bunu okur. */
+    private volatile SellGate.Reason lastReason = SellGate.Reason.DISABLED;
 
     @Override
     public void onInitializeClient() {
@@ -404,7 +407,7 @@ public class DonutTraderMod implements ClientModInitializer {
             marketRequestedAt = 0;
             onMarketRequestFailed(client);
         }
-        if (!config.enabled || client.player == null || client.getConnection() == null) return;
+        if (client.player == null || client.getConnection() == null) return;
 
         // Sanal tıklamalar oyuncunun kendi envanter menüsüne gider; başka bir
         // konteyner açıksa slot numaraları bambaşka bir şeye denk gelir.
@@ -413,82 +416,89 @@ public class DonutTraderMod implements ClientModInitializer {
         long now = System.currentTimeMillis();
         if (cycleStart == 0) cycleStart = now;
 
+        SellGate.Reason blocked = SellGate.blocking(config.enabled, resting(now),
+                now < backoffUntil, listingManager.isInCombat());
+        if (blocked == SellGate.Reason.DISABLED) {
+            lastReason = blocked;
+            return;
+        }
         if (!licenceValid(client, now)) return;
-
-        long workMs = config.workSeconds * 1000L;
-        long restMs = config.restSeconds * 1000L;
-        if (Pacing.resting(now, cycleStart, workMs, restMs)) {
-            if (now - restAnnouncedAt > restMs) {
-                restAnnouncedAt = now;
-                long left = Pacing.restRemainingMs(now, cycleStart, workMs, restMs) / 1000;
-                client.player.sendSystemMessage(Component.literal(
-                        "§6[DonutTrader] §7Mola: §f" + left + " sn §7sonra devam edecek."));
-            }
+        if (blocked != null) {
+            lastReason = blocked;
+            announceBlock(client, now, blocked);
             return;
         }
 
-        if (now < backoffUntil) return;
-
-        if (listingManager.isInCombat()) {
-            if (now - lastWarningTime > 6000) {
-                client.player.sendSystemMessage(Component.literal("§6[DonutTrader] §eSavaş modu (Combat Tag) aktif, işlem 20 saniye duraklatıldı."));
-                lastWarningTime = now;
-            }
-            return;
+        // Onceki ilanin girip girmedigi belli olmadan sunucuya baska komut
+        // gitmez: dogrulama penceresi boyunca piyasa sorgusu da beklemeli.
+        boolean verifying = verifyAt > 0 && now < verifyAt;
+        if (!verifying) {
+            if (verifyAt > 0) verifyListing(client);
+            requestMarketScan(client, now);
         }
 
-        if (verifyAt > 0) {
-            if (now < verifyAt) return;
-            verifyListing(client);
+        SellGate.Verdict verdict = SellGate.next(facts(client, now, verifying));
+        lastReason = verdict.reason();
+        switch (verdict.action()) {
+            case SPLIT -> buildLot(client, now);
+            case LIST -> sendListing(client, now);
+            case WAIT -> announceWait(client, now, verdict.reason());
         }
+    }
 
-        // Piyasa fiyatı istenir ama satış ona bağlanmaz: tarama tutmadığında
-        // mod hiç satmaz hâle geliyordu. API fiyatı ve taban fiyat zaten var.
-        requestMarketScan(client, now);
-        if (marketRequestedAt > 0 && !scanFresh()) return; // elde fiyat yoksa cevabı bekle
+    private boolean resting(long now) {
+        return Pacing.resting(now, cycleStart, config.workSeconds * 1000L, config.restSeconds * 1000L);
+    }
 
-        if (now - lastCommandTime < COMMAND_COOLDOWN_MS || now - lastActionTime < Math.max(120, config.clickDelayMs)) return;
-        if (!listingManager.canListMore()) return;
-
-        // Sunucu havadayken /ah sell kabul etmiyor; gondermeden once yere in.
-        if (!client.player.onGround()) {
-            warn(client, now, "§6[DonutTrader] §eHavadasınız, satış için yere inilmesi bekleniyor.");
-            return;
-        }
-
+    /** Kapının baktığı her şey, tek yerde toplanmış hâlde. */
+    private SellGate.Facts facts(Minecraft client, long now, boolean verifying) {
         String target = DonutAuctionClient.normalizeItemName(config.targetItem);
-        if (!InventoryActionHelper.itemExists(target)) {
-            warn(client, now, "§6[DonutTrader] §cHedef eşya geçersiz: §f" + config.targetItem
-                    + " §c— düzeltmek için: §f/trader item <eşya>");
-            return;
+        boolean exists = InventoryActionHelper.itemExists(target);
+        ItemStack held = client.player.getInventory().getSelectedItem();
+        boolean handReady = InventoryActionHelper.idOf(held).equals(target)
+                && held.getCount() == config.lotSize;
+
+        int emptyHotbar = handReady ? 0 : InventoryActionHelper.findEmptyHotbarIndex(client.player);
+        boolean haveItems = false;
+        if (!handReady && emptyHotbar >= 0 && exists) {
+            int destination = InventoryActionHelper.HOTBAR_MENU_START + emptyHotbar;
+            haveItems = InventoryActionHelper.findTargetSlot(
+                    client.player, target, config.lotSize, destination) >= 0;
         }
 
+        return new SellGate.Facts(
+                verifying,
+                marketRequestedAt > 0 && !scanFresh(),
+                now - lastCommandTime < COMMAND_COOLDOWN_MS
+                        || now - lastActionTime < Math.max(120, config.clickDelayMs),
+                listingManager.canListMore(),
+                client.player.onGround(),
+                exists,
+                handReady,
+                emptyHotbar >= 0,
+                haveItems,
+                (long) effectivePrice());
+    }
+
+    /** Yığından bir lot ayırıp elimize al. */
+    private void buildLot(Minecraft client, long now) {
+        String target = DonutAuctionClient.normalizeItemName(config.targetItem);
+        int emptyHotbar = InventoryActionHelper.findEmptyHotbarIndex(client.player);
+        if (emptyHotbar < 0) return;
+
+        int destination = InventoryActionHelper.HOTBAR_MENU_START + emptyHotbar;
+        int sourceSlot = InventoryActionHelper.findTargetSlot(client.player, target, config.lotSize, destination);
+        if (sourceSlot < 0) return;
+
+        InventoryActionHelper.splitToHotbar(client, sourceSlot, emptyHotbar, config.lotSize);
+        client.player.getInventory().setSelectedSlot(emptyHotbar);
+        lastActionTime = now;
+    }
+
+    private void sendListing(Minecraft client, long now) {
+        long sellPrice = (long) effectivePrice();
         int selected = client.player.getInventory().getSelectedSlot();
         ItemStack held = client.player.getInventory().getSelectedItem();
-        boolean handReady = InventoryActionHelper.idOf(held).equals(target) && held.getCount() == config.lotSize;
-
-        if (!handReady) {
-            int emptyHotbar = InventoryActionHelper.findEmptyHotbarIndex(client.player);
-            if (emptyHotbar == -1) {
-                warn(client, now, "§6[DonutTrader] §cHotbar'ınızda en az 1 boş slot bırakınız!");
-                return;
-            }
-
-            int destination = InventoryActionHelper.HOTBAR_MENU_START + emptyHotbar;
-            int sourceSlot = InventoryActionHelper.findTargetSlot(client.player, target, config.lotSize, destination);
-            if (sourceSlot == -1) {
-                warn(client, now, "§6[DonutTrader] §cEnvanterinizde satılacak " + config.lotSize + "x " + config.targetItem + " kalmadı!");
-                return;
-            }
-
-            InventoryActionHelper.splitToHotbar(client, sourceSlot, emptyHotbar, config.lotSize);
-            client.player.getInventory().setSelectedSlot(emptyHotbar);
-            lastActionTime = now;
-            return;
-        }
-
-        long sellPrice = (long) effectivePrice();
-        if (sellPrice <= 0) return;
 
         // Piyasa okunamadan API fiyatiyla listelemek sessizce yanlis fiyata
         // satmaktir; oyuncu bunu ilanlar satilmayinca fark ediyor.
@@ -516,6 +526,35 @@ public class DonutTraderMod implements ClientModInitializer {
         lastActionTime = now;
         LOGGER.info("[DonutSMP Trader] /ah sell {} gonderildi! (Aktif: {}/{})",
                 sellPrice, listingManager.getActiveListings(), listingManager.getMaxSlots());
+    }
+
+    /** Molayı ve savaşı kendi temposunda duyurur; geri kalanı sessizdir. */
+    private void announceBlock(Minecraft client, long now, SellGate.Reason reason) {
+        long restMs = config.restSeconds * 1000L;
+        if (reason == SellGate.Reason.RESTING && now - restAnnouncedAt > restMs) {
+            restAnnouncedAt = now;
+            long left = Pacing.restRemainingMs(now, cycleStart,
+                    config.workSeconds * 1000L, restMs) / 1000;
+            client.player.sendSystemMessage(Component.literal(
+                    "§6[DonutTrader] §7Mola: §f" + left + " sn §7sonra devam edecek."));
+        } else if (reason == SellGate.Reason.COMBAT && now - lastWarningTime > 6000) {
+            lastWarningTime = now;
+            client.player.sendSystemMessage(Component.literal(
+                    "§6[DonutTrader] §eSavaş modu (Combat Tag) aktif, işlem 20 saniye duraklatıldı."));
+        }
+    }
+
+    /** Oyuncunun düzeltebileceği engeller söylenir; geçici olanlar susar. */
+    private void announceWait(Minecraft client, long now, SellGate.Reason reason) {
+        switch (reason) {
+            case IN_AIR -> warn(client, now, "§6[DonutTrader] §eHavadasınız, satış için yere inilmesi bekleniyor.");
+            case BAD_ITEM -> warn(client, now, "§6[DonutTrader] §cHedef eşya geçersiz: §f" + config.targetItem
+                    + " §c— düzeltmek için: §f/trader item <eşya>");
+            case NO_HOTBAR -> warn(client, now, "§6[DonutTrader] §cHotbar'ınızda en az 1 boş slot bırakınız!");
+            case NO_ITEMS -> warn(client, now, "§6[DonutTrader] §cEnvanterinizde satılacak "
+                    + config.lotSize + "x " + config.targetItem + " kalmadı!");
+            default -> { }
+        }
     }
 
     /**
@@ -634,6 +673,8 @@ public class DonutTraderMod implements ClientModInitializer {
     }
 
     public TeamBoard getTeam() { return team; }
+
+    public SellGate.Reason lastReason() { return lastReason; }
 
     public void tickMarketLogic() {
         try {

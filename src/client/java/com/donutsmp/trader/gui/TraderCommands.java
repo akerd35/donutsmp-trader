@@ -5,6 +5,7 @@ import com.donutsmp.trader.config.TraderConfig;
 import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.license.LicenseVerifier;
 import com.donutsmp.trader.market.AhListingManager;
+import com.donutsmp.trader.market.SellGate;
 import com.donutsmp.trader.market.Undercut;
 import com.donutsmp.trader.team.PeerState;
 import com.donutsmp.trader.team.Team;
@@ -118,6 +119,8 @@ public class TraderCommands {
                         .executes(context -> showLicense(context.getSource()))
                         .then(ClientCommands.argument("key", StringArgumentType.greedyString())
                                 .executes(context -> setLicense(context.getSource(), StringArgumentType.getString(context, "key")))))
+                .then(ClientCommands.literal("why")
+                        .executes(context -> showWhy(context.getSource())))
                 .then(ClientCommands.literal("pace")
                         .executes(context -> showPace(context.getSource()))
                         .then(ClientCommands.literal("off").executes(context -> setPace(context.getSource(), -1, 0)))
@@ -222,6 +225,7 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader undercut percent <yüzde> §7-> Sabit yerine yüzdesel fark"));
         source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
         source.sendFeedback(Component.literal("  §f/trader update §7-> GitHub'daki son sürümü indirir §8(yeniden başlatınca uygulanır)"));
+        source.sendFeedback(Component.literal("  §a/trader why §7-> Mod neden satmıyor, tek satırda söyler"));
         source.sendFeedback(Component.literal("  §f/trader pace off §7-> 5dk çalış / 1dk mola döngüsünü kapatır"));
         source.sendFeedback(Component.literal("  §f/trader team §7-> Arkadaşınızın durumu §8(eşya, kalan adet, boş hotbar)"));
         source.sendFeedback(Component.literal("  §f/trader team add <ad> §7-> O oyuncunun fiyatının altına inilmez"));
@@ -435,6 +439,47 @@ public class TraderCommands {
         return 1;
     }
 
+
+    /**
+     * Mod neden satmiyor?
+     *
+     * Sebep tick dongusunun icinde kaliyordu ve yalnizca kodu okuyarak
+     * bulunabiliyordu; artik kapi ne dediyse o yaziliyor.
+     */
+    private static int showWhy(FabricClientCommandSource source) {
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod == null) return 0;
+        TraderConfig config = TraderConfig.get();
+        SellGate.Reason reason = mod.lastReason();
+
+        if (reason == SellGate.Reason.GO) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §aSatışa hazır: §f"
+                    + config.lotSize + "x " + config.targetItem
+                    + " §7@ §a$" + String.format("%,.0f", mod.getCurrentRecommendedPrice())));
+        } else {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §eŞu an satmıyor: §c" + reason.text()));
+            String fix = remedy(reason, config);
+            if (fix != null) source.sendFeedback(Component.literal("§7" + fix));
+        }
+        source.sendFeedback(Component.literal("§7Fiyat kaynağı: §f" + mod.priceSource()));
+        return 1;
+    }
+
+    /** Oyuncunun yapabilecegi sey; gecici engellerde null. */
+    private static String remedy(SellGate.Reason reason, TraderConfig config) {
+        return switch (reason) {
+            case DISABLED -> "Başlatmak için: §f/trader on §7ya da §f/trader fullauto <eşya>";
+            case RESTING -> "Molayı kapatmak için: §f/trader pace off";
+            case COMBAT -> "Savaş bitince kendiliğinden devam eder.";
+            case SLOTS_FULL -> "İlanlarınız dolu. §f/ah listings §7açıp sayacı eşitleyebilirsiniz.";
+            case IN_AIR -> "Yere inin; sunucu havadayken §f/ah sell §7kabul etmiyor.";
+            case BAD_ITEM -> "Hedefi düzeltin: §f/trader item <eşya>";
+            case NO_HOTBAR -> "Hotbar'da en az bir slot boşaltın.";
+            case NO_ITEMS -> "Envanterde " + config.lotSize + "x " + config.targetItem + " kalmadı.";
+            case NO_PRICE -> "Fiyat yok: §f/trader price <fiyat> §7ya da §f/trader floor <fiyat>";
+            default -> null;
+        };
+    }
 
     // ---------- calisma temposu ----------
 

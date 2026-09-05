@@ -72,6 +72,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader undercut percent <yüzde>`** | Sayı | Sabit yerine yüzdesel fark *(büyük olan uygulanır)* |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
 | **`/trader dump on\|off`** | `[TAB]` | Açılan menülerin yapısını dosyaya yazar *(geliştirme için)* |
+| **`/trader why`** | `[TAB]` | **Mod neden satmıyor?** Engeli ve çözümünü tek satırda söyler |
 | **`/trader pace off`** | `[TAB]` | Çalış/dur döngüsünü kapatır; `on` geri açar |
 | **`/trader pace <çalış> <dur>`** | Sayı | Süreleri saniye olarak verir *(Örn: `/trader pace 600 30`)* |
 | **`/trader team`** | `[TAB]` | Arkadaşınızın durumu: eşya, kalan adet, boş hotbar, ilan sayısı |
@@ -127,7 +128,7 @@ com.donutsmp.trader/
 * **Minecraft:** 26.2 (Fabric Loader 0.19.3, Fabric API 0.158.0+26.2)
 * **Java:** 25+ *(Gradle/Loom gerekli JDK'yi kendisi indirir)*
 
-`./gradlew build` 122 testi de koşturur; hiçbiri Minecraft istemez.
+`./gradlew build` 127 testi de koşturur; hiçbiri Minecraft istemez.
 
 26.2 obfuscate edilmeden dağıtıldığı için Yarn mapping'i yoktur; proje Mojang
 isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
