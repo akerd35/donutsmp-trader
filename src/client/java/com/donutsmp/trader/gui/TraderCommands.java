@@ -360,8 +360,20 @@ public class TraderCommands {
 
     private static int setLot(FabricClientCommandSource source, int lotSize) {
         TraderConfig config = TraderConfig.get();
+        int previous = config.lotSize;
         config.lotSize = Math.max(1, Math.min(64, lotSize));
         config.save();
+
+        // Taban ve sabit fiyat BIR ILANIN tamami icindir. Lot buyudugunde ayni
+        // taban esya basina bolunur: 1 esya icin konan 9.000'lik taban, 16'lik
+        // lotta esyayi 562'ye korumaya calisir.
+        if (config.lotSize != previous && config.minPriceFloor > 0) {
+            source.sendFeedback(Component.literal(String.format(
+                    "§6[DonutTrader] §eTaban fiyat §f$%,.0f §ebir ilanın tamamı içindir — şimdi eşya başına §f$%,.0f§e.",
+                    config.minPriceFloor, config.minPriceFloor / config.lotSize)));
+            source.sendFeedback(Component.literal(
+                    "§7Lot boyutunu değiştirdiniz; gerekirse: §f/trader floor <fiyat> §7ve §f/trader price <fiyat>"));
+        }
         DonutTraderMod mod = DonutTraderMod.getInstance();
         if (mod != null) {
             mod.invalidateScan();

@@ -31,6 +31,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 ### 2. 📡 Canlı Piyasa API'si & Canlı In-Game Lore Tarayıcısı
 * **Web API (`donut.auction/v2/`):** 45 ana ürünün (Totem, Su Kovası, Shulker vb.) anlık en ucuz fiyatlarını ve likiditelerini çeker.
 * **In-Game AH Tarayıcısı:** `/ah` menüsü açıldığında rakiplerin fiyatlarını lore üzerinden tarar ve otomatik olarak rakibin **1$ altına** fiyat belirler *(sabit tutar ya da yüzde olarak ayarlanabilir)*.
+* **Yalnızca aynı yığın boyutundaki ilanlar rakip sayılır.** 64'lük bir yığının toplam fiyatı, tek bir eşyanın fiyatı değildir.
 * **Taban Fiyat Koruması (`minPriceFloor`):** Belirlediğiniz taban fiyatın altına asla inmez (zararına satış engeli).
 
 ### 3. 🤖 Tam Otonom & Sunucu Tabanlı 18-Slot Yönetimi
@@ -128,7 +129,7 @@ com.donutsmp.trader/
 * **Minecraft:** 26.2 (Fabric Loader 0.19.3, Fabric API 0.158.0+26.2)
 * **Java:** 25+ *(Gradle/Loom gerekli JDK'yi kendisi indirir)*
 
-`./gradlew build` 127 testi de koşturur; hiçbiri Minecraft istemez.
+`./gradlew build` 150 testi de koşturur; hiçbiri Minecraft istemez.
 
 26.2 obfuscate edilmeden dağıtıldığı için Yarn mapping'i yoktur; proje Mojang
 isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
@@ -263,6 +264,9 @@ git tag v1.0.1 && git push origin v1.0.1
 | Konu | Durum |
 | :--- | :--- |
 | **Ne zaman fiyat kırılır** | Rakip yoksa fiyat **değişmez**. Kırmak için iki şart birden: en az **3 ilan** (`minCompetitorsBelow`) altımızda olmalı **ve** en ucuzu bizden en az **$2.000** (`minUndercutGap`) ucuz olmalı. Piyasa yükselirse fiyat yükseltilir. |
+| **Yığın boyutu** | Rakip yalnızca **aynı adetteki** ilanlardır. 64'lük bir yığını 5.000'e basan biri, tek eşyanızın rakibi değildir; onun altına inmek 10.000'lik eşyayı 4.999'a vermek olurdu. Tersi daha pahalıya patlar: 16'lık lotu tek eşyalık bir ilanın altına asmak, on altı eşyayı bir tanenin parasına satmaktır. Aynı boyutta ilan yoksa fiyat **hareket etmez** ve mod bunu chat'e yazar. |
+| **Taban ve sabit fiyat bir ilanın tamamı içindir** | `/trader floor 9000`, lot 1 iken eşya başına 9.000, lot 16 iken eşya başına 562 demektir. `/trader lot` bunu değiştirdiğinizde uyarır. |
+| **API fiyatı zayıf sinyaldir** | Tarama tutmazsa fiyat `donut.auction`'dan gelir ve tane fiyatı lot boyutuyla çarpılır. API farklı yığın boyutlarını tek bir tane fiyatına indirger; 64'lük yığının tanesi tekli satılandan hep ucuzdur. Taze tarama varsa o kullanılır. |
 | **Menünün fiyat yuvarlaması** | AH, 11.999'u "11k" diye gösteriyor; okunan değer gerçeğinden 999'a kadar düşük olabilir. Yukarıdaki iki eşik bu gürültüyü emiyor, ayrıca kendi ilan tespiti yuvarlanmış fiyatları da eşleştiriyor. |
 | **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` sınıfı yazıldı ama **hiçbir yerden çağrılmıyor**: ne tespit ediyor ne logluyor. İptal edip yeniden koyma akışı da yazılmadı. |
 | **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/ah listings` menüsünü açmak sayacı gerçekle eşitler. |

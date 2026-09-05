@@ -330,37 +330,38 @@ public class DonutTraderMod implements ClientModInitializer {
         List<Slot> slots = menu.slots;
         String target = DonutAuctionClient.normalizeItemName(config.targetItem);
         String self = client.player.getGameProfile().name();
-        double lowestCompetitor = Double.MAX_VALUE;
-        int skippedOwn = 0;
-        List<Double> competitorPrices = new java.util.ArrayList<>();
 
+        List<MarketListing.Entry> entries = new java.util.ArrayList<>();
         int scanned = Math.min(45, slots.size());
         for (int i = 0; i < scanned; i++) {
             ItemStack stack = slots.get(i).getItem();
-            if (stack.isEmpty() || !InventoryActionHelper.idOf(stack).equals(target)) continue;
-
+            if (stack.isEmpty()) continue;
             ItemLore lore = stack.get(DataComponents.LORE);
             if (lore == null) continue;
-
-            List<String> texts = lore.lines().stream().map(Component::getString).toList();
-            double price = MarketListing.competitorPrice(texts, team.ourNames(config, self), ownPrices);
-            if (price < 0) {
-                skippedOwn++;
-                continue;
-            }
-            competitorPrices.add(price);
-            if (price < lowestCompetitor) lowestCompetitor = price;
+            entries.add(new MarketListing.Entry(
+                    InventoryActionHelper.idOf(stack),
+                    stack.getCount(),
+                    lore.lines().stream().map(Component::getString).toList()));
         }
 
-        if (lowestCompetitor == Double.MAX_VALUE) {
-            LOGGER.info("[DonutSMP Trader] Piyasada baska satici yok (kendi ilanimiz atlandi: {})", skippedOwn);
+        MarketListing.Board board = MarketListing.scan(entries, target, config.lotSize,
+                team.ourNames(config, self), ownPrices);
+
+        if (board.empty()) {
+            LOGGER.info("[DonutSMP Trader] {}x {} icin kiyaslanabilir rakip yok "
+                            + "(kendi/takim ilani: {}, farkli yigin boyutu: {})",
+                    config.lotSize, target, board.skippedOwn(), board.skippedSize());
+            if (board.skippedSize() > 0) {
+                warn(client, System.currentTimeMillis(), String.format(
+                        "§6[DonutTrader] §e%s için %dx boyutunda ilan yok §7(%d ilan farklı boyutta, kıyaslanmadı)",
+                        target, config.lotSize, board.skippedSize()));
+            }
             return;
         }
+
+        double lowestCompetitor = board.cheapest();
         double previous = scanFresh() ? scanPrice : 0;
-        int below = 0;
-        for (double p : competitorPrices) {
-            if (previous > 0 && p < previous) below++;
-        }
+        int below = board.below(previous);
 
         PricePolicy.Decision decision = PricePolicy.decide(previous, lowestCompetitor, below,
                 config.minPriceFloor, config.undercutAmount, config.undercutPercent,
@@ -369,8 +370,10 @@ public class DonutTraderMod implements ClientModInitializer {
         scanPrice = decision.price();
         scanPriceAt = System.currentTimeMillis();
 
-        LOGGER.info("[DonutSMP Trader] Piyasa: rakip {} ({} tanesi altimizda) | {} -> {} ({}) (kendi ilanimiz atlandi: {})",
-                lowestCompetitor, below, previous, decision.price(), decision.reason(), skippedOwn);
+        LOGGER.info("[DonutSMP Trader] Piyasa ({}x): rakip {} ({} tanesi altimizda, {} kiyaslanabilir ilan) "
+                        + "| {} -> {} ({}) (kendi/takim: {}, farkli boyut: {})",
+                config.lotSize, lowestCompetitor, below, board.prices().size(),
+                previous, decision.price(), decision.reason(), board.skippedOwn(), board.skippedSize());
 
         if (decision.changed() && previous > 0) {
             client.player.sendSystemMessage(Component.literal(String.format(

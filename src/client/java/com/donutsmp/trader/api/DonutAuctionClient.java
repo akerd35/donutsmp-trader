@@ -125,18 +125,35 @@ public class DonutAuctionClient {
 
     public double calculateOptimalSellPrice(String itemName, int lotSize, double defaultFallbackPrice,
                                             double minimumPriceFloor, double undercutAmount, double undercutPercent) {
-        TickerItem ticker = getCheapestListing(itemName);
+        return sellPriceFor(getCheapestListing(itemName), lotSize, defaultFallbackPrice,
+                minimumPriceFloor, undercutAmount, undercutPercent);
+    }
+
+    /**
+     * API'nin en ucuz ilanına göre bizim lotumuzun fiyatı.
+     *
+     * Kıyas her zaman TANE fiyatı üzerinden yapılır ve sonra lot boyutumuzla
+     * çarpılır. Ham ilan fiyatını kullanmak, o ilanın kaç eşya içerdiğini
+     * bilmeden fiyat vermektir: 64'lük bir yığının fiyatına 16'lık lot asmak
+     * dört katı fiyat ister, tersi dörtte birine satar.
+     *
+     * Bu yine de ekran taramasından zayıf bir sinyal: API farklı yığın
+     * boyutlarını tek bir tane fiyatına indirger, oysa 64'lük yığının tanesi
+     * tekli satılana göre hep daha ucuzdur. Taze tarama varsa o kullanılır.
+     */
+    static double sellPriceFor(TickerItem ticker, int lotSize, double defaultFallbackPrice,
+                               double minimumPriceFloor, double undercutAmount, double undercutPercent) {
         if (ticker == null || ticker.getListingPrice() <= 0) {
             return Math.max(defaultFallbackPrice, minimumPriceFloor);
         }
 
-        double competitorPrice;
-        if (lotSize == 1) {
-            competitorPrice = ticker.getUnitPrice() > 0 ? ticker.getUnitPrice() : ticker.getListingPrice();
-        } else {
-            competitorPrice = ticker.getListingPrice();
+        double unit = ticker.getUnitPrice();
+        if (unit <= 0 && ticker.getQuantity() > 0) {
+            unit = ticker.getListingPrice() / ticker.getQuantity();
         }
+        if (unit <= 0) unit = ticker.getListingPrice();
 
+        double competitorPrice = unit * Math.max(1, lotSize);
         return Undercut.target(competitorPrice, undercutAmount, undercutPercent, minimumPriceFloor);
     }
 }

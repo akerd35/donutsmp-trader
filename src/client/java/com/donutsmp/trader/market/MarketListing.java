@@ -2,6 +2,7 @@ package com.donutsmp.trader.market;
 
 import com.donutsmp.trader.api.AhPriceParser;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Set;
@@ -16,6 +17,76 @@ import java.util.Set;
 public final class MarketListing {
 
     private MarketListing() {}
+
+    /** Menüdeki bir slot: eşya, kaç tane, ve lore satırları. */
+    public record Entry(String itemId, int count, List<String> lore) {}
+
+    /**
+     * Taramadan çıkan rakip fiyatları ve neyin neden atlandığı.
+     *
+     * @param skippedOwn  bizim ya da takımın ilanı
+     * @param skippedSize aynı eşya ama farklı yığın boyutu
+     */
+    public record Board(List<Double> prices, int skippedOwn, int skippedSize) {
+
+        public boolean empty() { return prices.isEmpty(); }
+
+        /** En ucuz rakip; hiç yoksa -1. */
+        public double cheapest() {
+            double best = -1;
+            for (double price : prices) {
+                if (best < 0 || price < best) best = price;
+            }
+            return best;
+        }
+
+        /** Verilen fiyattan ucuz kaç ilan var. */
+        public int below(double price) {
+            if (price <= 0) return 0;
+            int count = 0;
+            for (double other : prices) {
+                if (other < price) count++;
+            }
+            return count;
+        }
+    }
+
+    /**
+     * Menüdeki ilanlardan kıyaslanabilir olanları süz.
+     *
+     * Yığın boyutu eşleşmesi şart. 64'lük bir yığının toplam fiyatını tek bir
+     * eşyanın fiyatı sanmak, fiyatı 64 kat yanlış okumaktır: 64 merdiveni
+     * 5.000'e basan birinin altına inip TEK merdivenimizi 4.999'a asarsak
+     * 10.000'lik eşyayı yarı fiyatına vermiş oluruz. Bunun tersi de olur ve
+     * daha pahalıya patlar: elimizdeki 16'lık lotu, tek eşyalık bir ilanın
+     * altına asmak on altı eşyayı bir tanenin parasına satmaktır.
+     *
+     * Aynı boyutta ilan yoksa kıyas edilecek rakip yok demektir; fiyat
+     * hareket etmez.
+     */
+    public static Board scan(List<Entry> entries, String targetItem, int lotSize,
+                             Collection<String> ourNames, Set<Long> ownPrices) {
+        List<Double> prices = new ArrayList<>();
+        int skippedOwn = 0;
+        int skippedSize = 0;
+
+        if (entries == null || targetItem == null) return new Board(prices, 0, 0);
+
+        for (Entry entry : entries) {
+            if (entry == null || !targetItem.equals(entry.itemId())) continue;
+            if (entry.count() != lotSize) {
+                skippedSize++;
+                continue;
+            }
+            double price = competitorPrice(entry.lore(), ourNames, ownPrices);
+            if (price < 0) {
+                skippedOwn++;
+                continue;
+            }
+            prices.add(price);
+        }
+        return new Board(prices, skippedOwn, skippedSize);
+    }
 
     /**
      * @return rakibin fiyatı, ilan bizimse ya da fiyat okunamıyorsa -1
