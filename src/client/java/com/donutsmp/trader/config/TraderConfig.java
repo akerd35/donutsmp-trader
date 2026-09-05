@@ -9,8 +9,12 @@ import org.slf4j.LoggerFactory;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class TraderConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger("DonutTrader-Config");
@@ -43,6 +47,19 @@ public class TraderConfig {
     public int restSeconds = 60;
     public String licenseKey = "";
     public boolean dumpScreens = false;
+
+    /**
+     * Fiyatının altına inilmeyecek oyuncular.
+     *
+     * Arka plandaki takım görevi bu listeye yazarken oyun döngüsü ve Gson onu
+     * geziyor. Kopyalayarak yazan bir liste her gezinmeyi kendi anlık görüntüsü
+     * üzerinde yapar; kilit gerekmez, ConcurrentModificationException olmaz.
+     */
+    public List<String> teammates = new CopyOnWriteArrayList<>();
+    /** Durumların paylaşıldığı eşitlenen klasör; boşsa paylaşım kapalı. */
+    public String teamFolder = "";
+    /** Bu kadar süredir güncellenmemiş bir arkadaş çevrimdışı sayılır. */
+    public int teamStaleSeconds = 90;
 
 
     private static TraderConfig INSTANCE = null;
@@ -86,6 +103,9 @@ public class TraderConfig {
         live.restSeconds = fresh.restSeconds;
         live.licenseKey = fresh.licenseKey;
         live.dumpScreens = fresh.dumpScreens;
+        live.teammates = fresh.teammates;
+        live.teamFolder = fresh.teamFolder;
+        live.teamStaleSeconds = fresh.teamStaleSeconds;
         live.clamp();
         return live;
     }
@@ -127,14 +147,33 @@ public class TraderConfig {
         scanIntervalSeconds = Math.max(3, Math.min(600, scanIntervalSeconds));
         clickDelayMs = Math.max(0, clickDelayMs);
         marketPollSeconds = Math.max(5, marketPollSeconds);
+        // Gson kendi ArrayList'ini koyar; okumadan sonra tipi geri almak şart.
+        if (teammates == null) teammates = new CopyOnWriteArrayList<>();
+        else if (!(teammates instanceof CopyOnWriteArrayList)) {
+            teammates = new CopyOnWriteArrayList<>(teammates);
+        }
+        teammates.removeIf(name -> !com.donutsmp.trader.team.Team.validName(name));
+        if (teamFolder == null) teamFolder = "";
+        teamStaleSeconds = Math.max(10, Math.min(3600, teamStaleSeconds));
     }
 
-    public void save() {
+    /**
+     * Arka plandaki takım görevi de kaydediyor, komutlar da. İki yazıcı aynı
+     * dosyada buluşursa yarısı yazılmış bir ayar dosyası kalır ve okuma
+     * başarısız olunca bütün ayarlar varsayılana döner.
+     */
+    public synchronized void save() {
         try {
             Path file = path();
             Files.createDirectories(file.getParent());
-            try (Writer writer = Files.newBufferedWriter(file, StandardCharsets.UTF_8)) {
+            Path temp = file.resolveSibling(file.getFileName() + ".tmp");
+            try (Writer writer = Files.newBufferedWriter(temp, StandardCharsets.UTF_8)) {
                 GSON.toJson(this, writer);
+            }
+            try {
+                Files.move(temp, file, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (Exception e) {
             LOGGER.error("Ayar dosyası kaydedilemedi: {}", e.getMessage());

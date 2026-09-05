@@ -2,6 +2,7 @@ package com.donutsmp.trader.market;
 
 import com.donutsmp.trader.api.AhPriceParser;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Set;
 
@@ -20,14 +21,21 @@ public final class MarketListing {
      * @return rakibin fiyatı, ilan bizimse ya da fiyat okunamıyorsa -1
      */
     public static double competitorPrice(List<String> loreLines, String selfName, Set<Long> ownPrices) {
+        return competitorPrice(loreLines, selfName == null ? List.of() : List.of(selfName), ownPrices);
+    }
+
+    /**
+     * @param ourNames kendi adımız ve fiyat kırmayacağımız takım arkadaşları
+     * @return rakibin fiyatı, ilan bizden birine aitse ya da fiyat okunamıyorsa -1
+     */
+    public static double competitorPrice(List<String> loreLines, Collection<String> ourNames, Set<Long> ownPrices) {
         if (loreLines == null || loreLines.isEmpty()) return -1;
 
-        String self = selfName == null ? "" : selfName.trim().toLowerCase();
         double cheapest = -1;
 
         for (String line : loreLines) {
             if (line == null) continue;
-            if (!self.isEmpty() && line.toLowerCase().contains(self)) return -1;
+            if (isOurs(line, ourNames)) return -1;
 
             double parsed = AhPriceParser.parsePrice(line);
             if (parsed > 0 && (cheapest < 0 || parsed < cheapest)) {
@@ -41,6 +49,23 @@ public final class MarketListing {
         if (isOurPrice(cheapest, ownPrices)) return -1;
 
         return cheapest;
+    }
+
+    /**
+     * Satırda bizden birinin adı geçiyor mu?
+     *
+     * Kısa adlar aranmaz: iki harflik bir ad piyasadaki her ilanda geçer ve
+     * mod hiç rakip göremez hâle gelir.
+     */
+    static boolean isOurs(String line, Collection<String> ourNames) {
+        if (ourNames == null || ourNames.isEmpty()) return false;
+        String lower = line.toLowerCase();
+        for (String name : ourNames) {
+            if (name == null) continue;
+            String trimmed = name.trim().toLowerCase();
+            if (trimmed.length() >= 3 && lower.contains(trimmed)) return true;
+        }
+        return false;
     }
 
     /**

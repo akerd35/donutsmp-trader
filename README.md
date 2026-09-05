@@ -39,7 +39,13 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 * DonutSMP'den gelen *"You have too many listed items"* mesajını ilk milisaniyede yakalayıp kilitlenir.
 * Bir eşyanız satıldığında veya siz bir ilanı çektiğinizde sohbetteki bildirimi anında yakalar, slotu boşa çıkarır ve çantanızdaki sıradaki eşyayı satışa koyar.
 
-### 4. 🛡️ Güvenlik & Anti-Spam Korumaları
+### 4. 👥 İki Hesap Birlikte (Takım)
+* **Birbirinin fiyatını kırmaz.** Takım listesindeki bir oyuncunun ilanı rakip sayılmaz; iki arkadaş aynı eşyayı satarken normalde birbirini taban fiyata kadar kovalar.
+* **Karşılıklı durum görünür:** hangi eşyayı satıyor, envanterinde kaç tane kaldı, hotbar'ında boş slot var mı, kaç ilanı açık. HUD'da ve `/trader team` içinde.
+* **Sunucu, alan adı ve parola gerekmez.** Buluşma noktası eşitlenen bir klasör: Dropbox, Google Drive, iCloud ya da Syncthing. Herkes yalnızca kendi dosyasına yazar, ötekiler okur.
+* **Klasördeki adlar kendiliğinden listeye girer** ve arkadaş oyundan çıksa da listede kalır — ilanları duruyor, korumanın onunla birlikte kalkmaması gerekiyor.
+
+### 5. 🛡️ Güvenlik & Anti-Spam Korumaları
 * **Savaş Modu Koruması (Combat Tag Guard):** Savaşta olduğunuzda (*"You cannot do this in combat"*) otomatik olarak **20 saniye** duraklar.
 * **İnsan Benzeri Gecikme (1.4s Cooldown):** Sunucu antispam sistemlerine takılmamak için komutlar arasına güvenli bekleme koyar.
 * **Chat / ESC Duraklatma:** Sohbette yazı yazarken veya ESC menüsündeyken mod otomatik olarak durur.
@@ -66,6 +72,10 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader undercut percent <yüzde>`** | Sayı | Sabit yerine yüzdesel fark *(büyük olan uygulanır)* |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
 | **`/trader dump on\|off`** | `[TAB]` | Açılan menülerin yapısını dosyaya yazar *(geliştirme için)* |
+| **`/trader team`** | `[TAB]` | Arkadaşınızın durumu: eşya, kalan adet, boş hotbar, ilan sayısı |
+| **`/trader team add <ad>`** | - | O oyuncunun fiyatının altına inilmez |
+| **`/trader team remove <ad>`** | - | Listeden çıkarır |
+| **`/trader team folder <yol>`** | - | Ortak klasörle durum paylaşımı; `off` kapatır |
 | **`/trader license <anahtar>`** | - | Lisans anahtarını girer |
 | **`/trader update`** | `[TAB]` | GitHub'daki son sürümü indirir *(yeniden başlatınca uygulanır)* |
 | **`/trader reload`** | `[TAB]` | Ayar dosyasını diskten yeniden okur |
@@ -106,6 +116,8 @@ com.donutsmp.trader/
 * **Minecraft:** 26.2 (Fabric Loader 0.19.3, Fabric API 0.158.0+26.2)
 * **Java:** 25+ *(Gradle/Loom gerekli JDK'yi kendisi indirir)*
 
+`./gradlew build` 120 testi de koşturur; hiçbiri Minecraft istemez.
+
 26.2 obfuscate edilmeden dağıtıldığı için Yarn mapping'i yoktur; proje Mojang
 isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
 
@@ -113,7 +125,7 @@ isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
 ```bash
 ./gradlew build      # Windows: .\build.ps1
 ```
-Çıktı: `build/libs/donutsmp-trader-1.0.0.jar`
+Çıktı: `build/libs/donutsmp-trader-<sürüm>.jar` (sürüm `gradle.properties` içinde).
 
 ### Kurulum
 Jar'ı Minecraft **kapalıyken** profilinizin `mods` klasörüne kopyalayın.
@@ -141,6 +153,40 @@ o süre içinde tarama tutmazsa API fiyatına düşer ama satış durmaz.
 
 Sunucunuzda arama komutu farklıysa `config/donutsmp_trader.json` içindeki
 `marketCommand` alanını değiştirin (varsayılan `ah search %s`).
+
+### İki hesabı birbirine bağlamak
+
+İkiniz de eşitlenen ortak bir klasör gösterin:
+
+```
+/trader team folder ~/Dropbox/donuttrader
+```
+
+Gerisi kendiliğinden olur: birkaç saniye içinde adlar karşılıklı listeye girer,
+HUD'a arkadaşınızın satırı düşer ve hiçbiriniz ötekinin fiyatının altına inmez.
+Klasör kurmak istemiyorsanız adı elle de ekleyebilirsiniz — koruma çalışır,
+yalnız durum paylaşımı olmaz:
+
+```
+/trader team add Kaan
+```
+
+Nasıl çalıştığı:
+
+| | |
+| :--- | :--- |
+| **Ekran taraması** | Arkadaşın ilanı rakip sayılmaz, altı kesilmez |
+| **API fiyatı** | Arkadaşın yayınladığı fiyatın altına inilmez, eşitlenir |
+| **Yayınlanan fiyat** | Takım kuralı **uygulanmadan önceki** kendi fiyatımız |
+| **Çevrimdışı arkadaş** | 90 sn sonra fiyatı bağlayıcı olmaktan çıkar, adı listede kalır |
+
+Üçüncü satır önemli: listelediğimiz fiyatı yayınlarsaydık iki mod birbirinin
+tabanını besler ve piyasa düşse bile ikisi de eski fiyatta kilitlenirdi.
+`TeamPriceTest` iki tasarımı yan yana koşturup farkı gösteriyor.
+
+Klasördeki dosyalar başka bir makinede yazıldığı için veri olarak okunuyor:
+boyut sınırlı, sayılar makul aralığa çekiliyor, renk kodları temizleniyor ve
+oyuncu adı dosya yoluna girmeden önce süzülüyor.
 
 ### Çalışma temposu
 Mod varsayılan olarak **5 dakika çalışıp 1 dakika duruyor** (`workSeconds`,

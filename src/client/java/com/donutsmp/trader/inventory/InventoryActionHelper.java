@@ -70,6 +70,30 @@ public class InventoryActionHelper {
         return best;
     }
 
+    /** Satılabilir durumdaki hedef eşyanın envanterdeki toplam adedi. */
+    public static int countItem(Player player, String targetItemName) {
+        if (player == null || targetItemName == null) return 0;
+        String want = DonutAuctionClient.normalizeItemName(targetItemName);
+
+        int total = 0;
+        for (int i = BACKPACK_MENU_START; i <= HOTBAR_MENU_END; i++) {
+            ItemStack stack = player.inventoryMenu.getSlot(i).getItem();
+            if (stack.isEmpty() || !isPlain(stack) || !idOf(stack).equals(want)) continue;
+            total += stack.getCount();
+        }
+        return total;
+    }
+
+    /** Hotbar'da kaç boş slot var. Lot ayırmak için en az bir tane gerekiyor. */
+    public static int countEmptyHotbar(Player player) {
+        if (player == null) return 0;
+        int free = 0;
+        for (int i = 0; i < 9; i++) {
+            if (player.getInventory().getItem(i).isEmpty()) free++;
+        }
+        return free;
+    }
+
     /** Hotbar'daki (envanter indeksi 0..8) ilk boş slot, yoksa -1. */
     public static int findEmptyHotbarIndex(Player player) {
         if (player == null) return -1;

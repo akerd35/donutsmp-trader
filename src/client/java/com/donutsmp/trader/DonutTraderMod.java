@@ -14,6 +14,9 @@ import com.donutsmp.trader.market.AutoRelister;
 import com.donutsmp.trader.market.MarketListing;
 import com.donutsmp.trader.market.Pacing;
 import com.donutsmp.trader.market.PricePolicy;
+import com.donutsmp.trader.team.PeerState;
+import com.donutsmp.trader.team.TeamBoard;
+import com.donutsmp.trader.team.TeamPrice;
 import com.donutsmp.trader.update.Updater;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.api.ClientModInitializer;
@@ -87,6 +90,9 @@ public class DonutTraderMod implements ClientModInitializer {
 
     private volatile double scanPrice = -1;
     private volatile long scanPriceAt = 0;
+
+    private final TeamBoard team = new TeamBoard();
+    private long nextSnapshotAt = 0;
 
     private KeyMapping toggleKey;
     private String screenKey = null;
@@ -334,7 +340,7 @@ public class DonutTraderMod implements ClientModInitializer {
             if (lore == null) continue;
 
             List<String> texts = lore.lines().stream().map(Component::getString).toList();
-            double price = MarketListing.competitorPrice(texts, self, ownPrices);
+            double price = MarketListing.competitorPrice(texts, team.ourNames(config, self), ownPrices);
             if (price < 0) {
                 skippedOwn++;
                 continue;
@@ -378,6 +384,8 @@ public class DonutTraderMod implements ClientModInitializer {
                 client.player.sendSystemMessage(Component.literal("§6[DonutTrader] §eMod Durumu: " + (config.enabled ? "§a[AKTİF]" : "§c[PASİF]")));
             }
         }
+
+        publishState(client);
 
         Screen screen = client.gui.screen();
         if (screen != null) {
@@ -588,7 +596,44 @@ public class DonutTraderMod implements ClientModInitializer {
 
         int period = Math.max(5, config.marketPollSeconds);
         this.backgroundExecutor.scheduleWithFixedDelay(this::tickMarketLogic, 1, period, TimeUnit.SECONDS);
+        this.backgroundExecutor.scheduleWithFixedDelay(this::tickTeam, 2, 3, TimeUnit.SECONDS);
     }
+
+    /**
+     * Kendi durumumuzu takım tablosuna bırak.
+     *
+     * Sadece bırakılır; diske yazmayı arka plan yapar. Mod kapalıyken de
+     * yazılır, arkadaş "şu an satmıyor" bilgisini de görebilsin.
+     */
+    private void publishState(Minecraft client) {
+        long now = System.currentTimeMillis();
+        if (now < nextSnapshotAt || client.player == null) return;
+        nextSnapshotAt = now + 1000;
+
+        String target = DonutAuctionClient.normalizeItemName(config.targetItem);
+        team.setMine(new PeerState(
+                client.player.getGameProfile().name(),
+                now,
+                config.enabled,
+                config.targetItem,
+                config.lotSize,
+                (long) basePrice(),
+                InventoryActionHelper.countItem(client.player, target),
+                InventoryActionHelper.countEmptyHotbar(client.player),
+                listingManager.getActiveListings(),
+                listingManager.getMaxSlots()));
+    }
+
+    private void tickTeam() {
+        try {
+            PeerState mine = team.mine();
+            if (mine != null) team.poll(config, mine.name());
+        } catch (Exception e) {
+            LOGGER.warn("[Takim] Paylasim tick hatasi: {}", e.getMessage());
+        }
+    }
+
+    public TeamBoard getTeam() { return team; }
 
     public void tickMarketLogic() {
         try {
@@ -612,15 +657,29 @@ public class DonutTraderMod implements ClientModInitializer {
      * API fiyatına kilitler ve ucuza sattırır.
      */
     public double effectivePrice() {
-        if (!config.autoUndercut) {
-            return Math.max(config.fallbackPrice, config.minPriceFloor);
-        }
-        double price = scanFresh() ? scanPrice : apiPrice;
+        return TeamPrice.floor(basePrice(), config.targetItem, config.lotSize, team.peers());
+    }
+
+    /**
+     * Takım kuralı uygulanmadan önceki kendi fiyatımız. Arkadaşlara YAYINLANAN
+     * budur, listelenen değil.
+     *
+     * Fark önemli: taban dahil bir fiyat yayınlarsak iki mod birbirinin
+     * tabanını besler. Piyasa 7.000'e inse bile ikisi de "ötekinin fiyatı
+     * 9.000" görüp orada kilitlenir ve hiçbiri inemez.
+     */
+    public double basePrice() {
+        double price = config.autoUndercut
+                ? (scanFresh() ? scanPrice : apiPrice)
+                : config.fallbackPrice;
         return Math.max(price, config.minPriceFloor);
     }
 
     /** Fiyatın nereden geldiği; "undercut çalışmıyor" şikayetini teşhis etmek için. */
     public String priceSource() {
+        if (TeamPrice.binding(basePrice(), config.targetItem, config.lotSize, team.peers())) {
+            return String.format("takım arkadaşının fiyatı ($%,.0f) — altına inilmiyor", effectivePrice());
+        }
         if (!config.autoUndercut) {
             return String.format("sabit fiyat ($%,.0f) — /trader undercut on ile piyasaya bağlanır", config.fallbackPrice);
         }
@@ -661,7 +720,7 @@ public class DonutTraderMod implements ClientModInitializer {
     }
 
     public List<String> getHudInfo() {
-        return TraderHud.getHudLines(config, listingManager, effectivePrice());
+        return TraderHud.getHudLines(config, listingManager, effectivePrice(), team.peers());
     }
 
     public String getKeyName() {

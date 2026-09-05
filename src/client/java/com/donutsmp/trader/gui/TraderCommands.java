@@ -6,6 +6,9 @@ import com.donutsmp.trader.inventory.InventoryActionHelper;
 import com.donutsmp.trader.license.LicenseVerifier;
 import com.donutsmp.trader.market.AhListingManager;
 import com.donutsmp.trader.market.Undercut;
+import com.donutsmp.trader.team.PeerState;
+import com.donutsmp.trader.team.Team;
+import com.donutsmp.trader.team.TeamLink;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -17,6 +20,8 @@ import com.donutsmp.trader.update.Updater;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
@@ -113,6 +118,22 @@ public class TraderCommands {
                         .executes(context -> showLicense(context.getSource()))
                         .then(ClientCommands.argument("key", StringArgumentType.greedyString())
                                 .executes(context -> setLicense(context.getSource(), StringArgumentType.getString(context, "key")))))
+                .then(ClientCommands.literal("team")
+                        .executes(context -> showTeam(context.getSource()))
+                        .then(ClientCommands.literal("add")
+                                .then(ClientCommands.argument("name", StringArgumentType.word())
+                                        .executes(context -> addTeammate(context.getSource(), StringArgumentType.getString(context, "name")))))
+                        .then(ClientCommands.literal("remove")
+                                .then(ClientCommands.argument("name", StringArgumentType.word())
+                                        .executes(context -> removeTeammate(context.getSource(), StringArgumentType.getString(context, "name")))))
+                        .then(ClientCommands.literal("clear")
+                                .executes(context -> clearTeam(context.getSource())))
+                        .then(ClientCommands.literal("folder")
+                                .executes(context -> showFolder(context.getSource()))
+                                .then(ClientCommands.literal("off")
+                                        .executes(context -> setFolder(context.getSource(), "")))
+                                .then(ClientCommands.argument("path", StringArgumentType.greedyString())
+                                        .executes(context -> setFolder(context.getSource(), StringArgumentType.getString(context, "path"))))))
                 .then(ClientCommands.literal("update")
                         .executes(context -> checkUpdate(context.getSource())))
                 .then(ClientCommands.literal("reload")
@@ -192,6 +213,9 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader undercut percent <yüzde> §7-> Sabit yerine yüzdesel fark"));
         source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
         source.sendFeedback(Component.literal("  §f/trader update §7-> GitHub'daki son sürümü indirir §8(yeniden başlatınca uygulanır)"));
+        source.sendFeedback(Component.literal("  §f/trader team §7-> Arkadaşınızın durumu §8(eşya, kalan adet, boş hotbar)"));
+        source.sendFeedback(Component.literal("  §f/trader team add <ad> §7-> O oyuncunun fiyatının altına inilmez"));
+        source.sendFeedback(Component.literal("  §f/trader team folder <yol> §7-> Ortak klasörle durum paylaşımı"));
         source.sendFeedback(Component.literal("  §f/trader status §7-> Anlık durumu, aktif slotları ve toplam kazancı gösterir"));
         source.sendFeedback(Component.literal("§6§l======================================================"));
         return 1;
@@ -398,6 +422,124 @@ public class TraderCommands {
         LicenseVerifier.Result result = mod.licenceStatus(name);
         source.sendFeedback(Component.literal("§6[DonutTrader] §eLisans: "
                 + (result.allowed() ? "§a" : "§c") + result.message()));
+        return 1;
+    }
+
+    // ---------- takım ----------
+
+    private static int showTeam(FabricClientCommandSource source) {
+        TraderConfig config = TraderConfig.get();
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+
+        source.sendFeedback(Component.literal("§6§l==================== [Takım] ===================="));
+        source.sendFeedback(Component.literal("§eFiyat kırılmayacaklar: §f"
+                + (config.teammates.isEmpty() ? "§7(kimse yok)" : String.join(", ", config.teammates))));
+        source.sendFeedback(Component.literal("§ePaylaşım klasörü: §f"
+                + (config.teamFolder.isBlank() ? "§7kapalı §8(/trader team folder <yol>)" : config.teamFolder)));
+
+        if (mod == null) return 1;
+        String error = mod.getTeam().lastError();
+        if (!error.isBlank() && !"null".equals(error)) {
+            source.sendFeedback(Component.literal("§cKlasör hatası: §f" + error));
+        }
+
+        List<PeerState> peers = mod.getTeam().peers();
+        if (peers.isEmpty()) {
+            source.sendFeedback(Component.literal("§7Çevrimiçi arkadaş yok."
+                    + (config.teamFolder.isBlank() ? "" : " §8(dosyalar " + config.teamStaleSeconds + " sn'de bir tazelenir)")));
+        }
+        long now = System.currentTimeMillis();
+        for (PeerState peer : peers) {
+            source.sendFeedback(Component.literal(String.format(
+                    "§b%s %s §7| §f%dx %s §7| §a$%,d §7| §eKalan: §f%d §7| §eBoş hotbar: §f%d §7| §eİlan: §f%d/%d §8(%d sn önce)",
+                    peer.name(), peer.enabled() ? "§a●" : "§7○",
+                    peer.lotSize(), peer.item(), peer.price(),
+                    peer.itemsLeft(), peer.freeHotbarSlots(),
+                    peer.activeListings(), peer.maxSlots(), peer.ageSeconds(now))));
+            if (peer.enabled() && peer.item() != null && peer.item().equalsIgnoreCase(config.targetItem)) {
+                if (peer.itemsLeft() == 0) {
+                    source.sendFeedback(Component.literal("  §7" + peer.name() + " §7için satacak eşya kalmadı."));
+                }
+                if (peer.freeHotbarSlots() == 0) {
+                    source.sendFeedback(Component.literal("  §c" + peer.name() + " §7hotbar'ında boş slot yok, lot ayıramaz."));
+                }
+            }
+        }
+        source.sendFeedback(Component.literal("§6§l================================================"));
+        return 1;
+    }
+
+    private static int addTeammate(FabricClientCommandSource source, String name) {
+        TraderConfig config = TraderConfig.get();
+        if (!Team.validName(name)) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §cGeçersiz oyuncu adı: §f" + name));
+            source.sendFeedback(Component.literal("§73-16 karakter, harf rakam ve alt çizgi."));
+            return 0;
+        }
+        if (!Team.add(config.teammates, name)) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §e" + name + " §7zaten listede."));
+            return 0;
+        }
+        config.save();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §a" + name.trim() + " §7eklendi; ilanlarının altına inilmeyecek."));
+        return 1;
+    }
+
+    private static int removeTeammate(FabricClientCommandSource source, String name) {
+        TraderConfig config = TraderConfig.get();
+        boolean removed = Team.remove(config.teammates, name);
+        config.save();
+        source.sendFeedback(Component.literal(removed
+                ? "§6[DonutTrader] §e" + name + " §7listeden çıkarıldı."
+                : "§6[DonutTrader] §7" + name + " zaten listede değildi."));
+        return removed ? 1 : 0;
+    }
+
+    private static int clearTeam(FabricClientCommandSource source) {
+        TraderConfig config = TraderConfig.get();
+        config.teammates.clear();
+        config.save();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eTakım listesi boşaltıldı."));
+        if (!config.teamFolder.isBlank()) {
+            source.sendFeedback(Component.literal("§7Klasör hâlâ açık; oradaki adlar birkaç saniye içinde geri eklenir."));
+        }
+        return 1;
+    }
+
+    private static int showFolder(FabricClientCommandSource source) {
+        TraderConfig config = TraderConfig.get();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §ePaylaşım klasörü: §f"
+                + (config.teamFolder.isBlank() ? "§7kapalı" : config.teamFolder)));
+        source.sendFeedback(Component.literal("§7İkiniz de aynı eşitlenen klasörü gösterin §8(Dropbox, Drive, iCloud, Syncthing)"));
+        source.sendFeedback(Component.literal("§7Örnek: §f/trader team folder ~/Dropbox/donuttrader"));
+        return 1;
+    }
+
+    private static int setFolder(FabricClientCommandSource source, String path) {
+        TraderConfig config = TraderConfig.get();
+        if (path == null || path.isBlank()) {
+            config.teamFolder = "";
+            config.save();
+            source.sendFeedback(Component.literal("§6[DonutTrader] §ePaylaşım kapatıldı. §7İsim listesi duruyor."));
+            return 1;
+        }
+
+        Path dir = TeamLink.resolve(path);
+        if (dir == null) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §cYol okunamadı: §f" + path));
+            return 0;
+        }
+        try {
+            Files.createDirectories(dir);
+        } catch (Exception e) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §cKlasör oluşturulamadı: §f" + e.getMessage()));
+            return 0;
+        }
+
+        config.teamFolder = path.trim();
+        config.save();
+        source.sendFeedback(Component.literal("§6[DonutTrader] §aPaylaşım açık: §f" + dir));
+        source.sendFeedback(Component.literal("§7Arkadaşınız da aynı klasörü göstersin. Adlar kendiliğinden eklenir."));
         return 1;
     }
 

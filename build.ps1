@@ -7,6 +7,8 @@ if ($LASTEXITCODE -ne 0) {
     Write-Error "Derleme basarisiz oldu!"
 }
 
-$jar = "build\libs\donutsmp-trader-1.0.0.jar"
-Write-Host "Basarili! Mod dosyasi: $jar" -ForegroundColor Green
+$jar = Get-ChildItem "build\libs\donutsmp-trader-*.jar" |
+    Where-Object { $_.Name -notlike "*-sources*" } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+Write-Host "Basarili! Mod dosyasi: $($jar.FullName)" -ForegroundColor Green
 Write-Host "Bu dosyayi Minecraft KAPALIYKEN mods klasorunuze kopyalayin." -ForegroundColor Yellow

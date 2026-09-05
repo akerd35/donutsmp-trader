@@ -3,6 +3,7 @@ package com.donutsmp.trader.gui;
 import com.donutsmp.trader.DonutTraderMod;
 import com.donutsmp.trader.config.TraderConfig;
 import com.donutsmp.trader.market.AhListingManager;
+import com.donutsmp.trader.team.PeerState;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
@@ -36,6 +37,11 @@ public class TraderHud {
     }
 
     public static List<String> getHudLines(TraderConfig config, AhListingManager listingManager, double currentRecommendedPrice) {
+        return getHudLines(config, listingManager, currentRecommendedPrice, List.of());
+    }
+
+    public static List<String> getHudLines(TraderConfig config, AhListingManager listingManager,
+                                           double currentRecommendedPrice, List<PeerState> peers) {
         List<String> lines = new ArrayList<>();
 
         String status = config.enabled ? "§a[AKTİF]" : "§c[PASİF]";
@@ -50,6 +56,15 @@ public class TraderHud {
                 config.lotSize, config.targetItem, currentRecommendedPrice));
         lines.add(String.format("§e[Kasa]: §a+$%,d §7(Satılan: §f%dx§7)",
                 listingManager.getTotalEarned(), listingManager.getItemsSold()));
+
+        for (PeerState peer : peers) {
+            lines.add(String.format("§b[%s] %s §f%dx %s §7| §a$%,d §7| §eKalan: §f%d §7| §eHotbar: %s%d §7| §f%d/%d",
+                    peer.name(), peer.enabled() ? "§a●" : "§7○",
+                    peer.lotSize(), peer.item(), peer.price(),
+                    peer.itemsLeft(),
+                    peer.freeHotbarSlots() == 0 ? "§c" : "§f", peer.freeHotbarSlots(),
+                    peer.activeListings(), peer.maxSlots()));
+        }
 
         return lines;
     }

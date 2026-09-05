@@ -4,9 +4,10 @@ set -euo pipefail
 
 PROFILE="${1:-Fabric 26.2}"
 MODS="$HOME/Library/Application Support/ModrinthApp/profiles/$PROFILE/mods"
-JAR="$(dirname "$0")/build/libs/donutsmp-trader-1.0.0.jar"
+# Surum gradle.properties'ten geliyor; burada tekrar yazmak ikisini ayirir.
+JAR="$(ls -t "$(dirname "$0")"/build/libs/donutsmp-trader-*.jar 2>/dev/null | grep -v -- '-sources' | head -1)"
 
-[ -f "$JAR" ] || { echo "Once derleyin: ./gradlew build"; exit 1; }
+[ -n "$JAR" ] && [ -f "$JAR" ] || { echo "Once derleyin: ./gradlew build"; exit 1; }
 [ -d "$MODS" ] || { echo "Profil bulunamadi: $MODS"; exit 1; }
 
 if pgrep -f "net.fabricmc.loader" > /dev/null; then
