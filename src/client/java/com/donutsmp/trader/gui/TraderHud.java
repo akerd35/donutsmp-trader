@@ -50,8 +50,16 @@ public class TraderHud {
         }
 
         lines.add("§6§l[DonutSMP Trader] " + status);
-        lines.add(String.format("§e[Slotlar]: §f%d/%d Dolu",
-                listingManager.getActiveListings(), listingManager.getMaxSlots()));
+        // Sayac tahmin, duran sey sunucunun cevabi. Ikisini ayirmadan
+        // gostermek "18/18" yazarken ilan acan bir modu anlasilmaz kilar.
+        String slots = String.format("§e[Slotlar]: §f%d/%d",
+                listingManager.getActiveListings(), listingManager.getMaxSlots());
+        if (listingManager.isServerLimited()) {
+            slots += String.format(" §c(sunucu: dolu, %d sn)", listingManager.limitSecondsLeft());
+        } else if (listingManager.isLimitReached()) {
+            slots += " §7(tahmin, denemeye devam)";
+        }
+        lines.add(slots);
         lines.add(String.format("§e[Hedef]: §f%dx %s §7| §eSatış Fiyatı: §a$%,.0f",
                 config.lotSize, config.targetItem, currentRecommendedPrice));
         lines.add(String.format("§e[Kasa]: §a+$%,d §7(Satılan: §f%dx§7)",

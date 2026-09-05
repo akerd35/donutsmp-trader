@@ -24,7 +24,7 @@ public final class SellGate {
         VERIFYING("önceki ilan doğrulanıyor"),
         WAITING_MARKET("piyasa cevabı bekleniyor"),
         COOLDOWN("komut arası bekleme"),
-        SLOTS_FULL("ilan slotları dolu"),
+        SLOTS_FULL("sunucu ilan sınırı dolu dedi"),
         IN_AIR("havadasınız"),
         BAD_ITEM("hedef eşya geçersiz"),
         NO_HOTBAR("hotbar'da boş slot yok"),

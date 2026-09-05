@@ -252,7 +252,10 @@ public class TraderCommands {
                 ? "§cmola yok §7(kesintisiz)"
                 : "§f" + config.workSeconds + "sn çalış / " + config.restSeconds + "sn mola")));
         if (lm != null) {
-            source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots()));
+            source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots()
+                    + (lm.isServerLimited()
+                    ? " §c(sunucu dolu dedi, " + lm.limitSecondsLeft() + " sn)"
+                    : " §7(tahmin; durduran sunucudur)")));
             source.sendFeedback(Component.literal("§eToplam Kasa Kazancı: §a+$" + String.format("%,d", lm.getTotalEarned()) + " §7(Satılan: §f" + lm.getItemsSold() + "x§7)"));
         }
         if (mod != null) {
@@ -483,7 +486,7 @@ public class TraderCommands {
             case DISABLED -> "Başlatmak için: §f/trader on §7ya da §f/trader fullauto <eşya>";
             case RESTING -> "Molayı kapatmak için: §f/trader pace off";
             case COMBAT -> "Savaş bitince kendiliğinden devam eder.";
-            case SLOTS_FULL -> "İlanlarınız dolu. 15 sn'de bir yine denenir; §f/ah listings §7açarsanız sayaç anında düzelir.";
+            case SLOTS_FULL -> "Sunucu sınırı dolu dedi; 15 sn sonra yine denenecek.";
             case IN_AIR -> "Yere inin; sunucu havadayken §f/ah sell §7kabul etmiyor.";
             case BAD_ITEM -> "Hedefi düzeltin: §f/trader item <eşya>";
             case NO_HOTBAR -> "Hotbar'da en az bir slot boşaltın.";

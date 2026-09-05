@@ -46,15 +46,20 @@ public class AhListingManager {
     private static final long PENDING_WINDOW_MS = 3000;
 
     /**
-     * Sayaç dolu derken ne kadar sonra yine denenir.
+     * Sunucu "ilan sınırın doldu" dedikten sonra ne kadar beklenir.
      *
-     * Sayaç sohbet bildirimlerinden yürüyor ve sunucu her satışı bildirmiyor;
-     * kaçan bildirim sayacı gerçeğin üstünde bırakıyor ve mod 18/18 sanıp
-     * duruyordu — ölçüldü, bir kere 5,5 dakika. Karar sayacın değil sunucunun:
-     * dolu görünsek bile arada bir denenir, sunucu reddederse süre yeniden
-     * başlar. Bedeli on beş saniyede bir reddedilen komut.
+     * Sayaç artık kapı değil. Sohbet bildirimlerinden yürüyor, sunucu her
+     * satışı bildirmiyor ve kaçan her bildirim sayacı gerçeğin üstünde
+     * bırakıyor: 18/18 sanan mod dururken gerçekte dokuz slot boş olabiliyor —
+     * ölçüldü, bir kere 5,5 dakika hiç ilan açmadı.
+     *
+     * Kaç slot olduğunu yalnızca sunucu bilir, o hâlde soran da o olsun: mod
+     * dener, sunucu reddederse bu kadar bekler. Bedeli sınır gerçekten
+     * doluyken on beş saniyede bir reddedilen komut. Sunucunun reddi bu
+     * kelimelerle gelmezse ilan doğrulaması devreye girer ve üst üste
+     * tutmayan denemeler katlanarak yavaşlar.
      */
-    private static final long RETRY_WHEN_FULL_MS = 15_000;
+    private static final long LIMIT_BACKOFF_MS = 15_000;
 
     private int maxSlots = 18;
     private int activeListings = 0;
@@ -62,9 +67,6 @@ public class AhListingManager {
     private boolean isLimitReached = false;
     /** Sunucu "ilan sınırın doldu" dedi; bu ana kadar tekrar denenmez. */
     private long limitUntil = 0;
-    private long lastAttemptAt = 0;
-    /** Bu deneme "sayaç dolu diyor ama yine de dene" denemesi miydi? */
-    private boolean probing = false;
     private long combatUntil = 0; // Savaş süresi koruması
     private long totalEarned = 0;
     private int itemsSold = 0;
@@ -89,12 +91,21 @@ public class AhListingManager {
     /** Saat disaridan verilebilsin ki on bes saniyelik pencere test edilebilsin. */
     synchronized boolean canListMore(long now) {
         if (now < combatUntil) return false;      // Savaşta iken komut gönderilemez
-        if (now < limitUntil) return false;       // Sunucu az önce reddetti
-        if (activeListings < maxSlots) return true;
-        return now - lastAttemptAt >= RETRY_WHEN_FULL_MS;
+        return now >= limitUntil;                 // Sunucu az önce reddettiyse bekle
     }
 
-    static long retryWhenFullMs() { return RETRY_WHEN_FULL_MS; }
+    static long limitBackoffMs() { return LIMIT_BACKOFF_MS; }
+
+    /** Sunucu şu anda "sınır dolu" diyor mu? Duran şey budur, sayaç değil. */
+    public synchronized boolean isServerLimited() {
+        return System.currentTimeMillis() < limitUntil;
+    }
+
+    /** Sunucunun beklemesine kalan saniye; beklemiyorsak 0. */
+    public synchronized long limitSecondsLeft() {
+        long left = limitUntil - System.currentTimeMillis();
+        return left > 0 ? (left + 999) / 1000 : 0;
+    }
 
     public synchronized void onListingAttempt() {
         this.activeListings = Math.min(maxSlots, this.activeListings + 1);
@@ -105,9 +116,7 @@ public class AhListingManager {
 
     /** Slotu şimdilik ayırır; sunucu reddederse geri alınır. */
     public synchronized void onListingSent() {
-        this.probing = activeListings >= maxSlots;
         onListingAttempt();
-        this.lastAttemptAt = System.currentTimeMillis();
         this.pendingSince = System.currentTimeMillis();
     }
 
@@ -116,31 +125,23 @@ public class AhListingManager {
     }
 
     /** Doğrulama başarısız oldu: ilan hiç girmemiş, slotu geri ver. */
+    /**
+     * Doğrulama başarısız oldu: ilan hiç girmemiş, slotu geri ver.
+     *
+     * Sunucunun koyduğu bekleme SİLİNMEZ. Sınır dolu diye reddedilen bir ilan
+     * tam da bu yoldan geliyor; beklemeyi burada sıfırlamak sunucunun "dolu"
+     * cevabını bir saniye sonra yeniden sormak olurdu.
+     */
     public synchronized void onListingRejected() {
         pendingSince = 0;
         if (activeListings > 0) activeListings--;
         this.isLimitReached = false;
-        this.limitUntil = 0;
     }
 
-    /**
-     * İlan gerçekten girdi.
-     *
-     * Sayaç dolu derken girdiyse sayaç yanılmış, yer varmış: bir eksiğe çekilir
-     * ki bir sonraki deneme on beş saniye beklemesin. Böylece gerçek sınıra
-     * kadar hızla dolar, orada sunucu "too many" der ve sayaç yerine oturur.
-     */
+    /** İlan gerçekten girdi: sunucu bizi sınırlamıyormuş. */
     public synchronized void onListingVerified() {
         pendingSince = 0;
         limitUntil = 0;
-        // Yalnızca DENEME tuttuysa düzelt. Koşulsuz azaltmak sayacın dolu
-        // kalmasını imkânsız kılar: normal listeleme de her seferinde bir
-        // eksiltir ve sayaç sınıra hiç oturmaz.
-        if (probing && activeListings >= maxSlots) {
-            activeListings = Math.max(0, maxSlots - 1);
-            isLimitReached = false;
-        }
-        probing = false;
     }
 
     /** Reddedilen ilanı sayaçtan düşer. Pencere geçtiyse ilan gerçekten girmiştir. */
@@ -184,7 +185,7 @@ public class AhListingManager {
         if (LIMIT_PATTERN.matcher(cleanMessage).find()) {
             this.activeListings = this.maxSlots;
             this.isLimitReached = true;
-            this.limitUntil = System.currentTimeMillis() + RETRY_WHEN_FULL_MS;
+            this.limitUntil = System.currentTimeMillis() + LIMIT_BACKOFF_MS;
             this.pendingSince = 0;
             LOGGER.warn("[LIMIT DOLU] Sunucu ilan sınırına ulaşıldı ({}/{}). Yeni satış bekleniyor.", activeListings, maxSlots);
             return true;
@@ -246,8 +247,6 @@ public class AhListingManager {
         this.pendingSince = 0;
         this.isLimitReached = false;
         this.limitUntil = 0;
-        this.lastAttemptAt = 0;
-        this.probing = false;
         this.combatUntil = 0;
     }
 }

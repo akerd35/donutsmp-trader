@@ -38,7 +38,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 * Sizin hiçbir menü açmanıza gerek yoktur.
 * 18 slot dolana kadar arka arkaya listeler.
 * DonutSMP'den gelen *"You have too many listed items"* mesajını ilk milisaniyede yakalayıp kilitlenir.
-* **Sayaç kilitlenmez.** Sunucu her satışı bildirmiyor; kaçan bildirim sayacı gerçeğin üstünde bırakıyor ve mod 18/18 sanıp duruyordu (ölçüldü: 5,5 dakika). Artık karar sayacın değil sunucunun: dolu görünse bile **15 saniyede bir yine denenir**. Deneme tutarsa sayaç yanılmış demektir ve mod kaldığı yerden devam eder; sunucu reddederse süre baştan başlar. Mod bunun için hiçbir menü açmaz.
+* **Slot sayacı listelemeyi durdurmaz.** Sunucu her satışı bildirmiyor; kaçan bildirim sayacı gerçeğin üstünde bırakıyor. 18/18 sanan mod dururken gerçekte dokuz slot boş olabiliyordu (ölçüldü: 5,5 dakika hiç ilan açmadı). Kaç slot olduğunu yalnızca sunucu bilir, o yüzden **sayaç yalnızca gösterge**: mod dener, sunucu *"too many listed items"* derse 15 saniye bekler. Sayaç yanılıyorsa hiç gecikme olmaz, boş slotlar normal hızda dolar. Bunun için hiçbir menü açılmaz.
 * Bir eşyanız satıldığında veya siz bir ilanı çektiğinizde sohbetteki bildirimi anında yakalar, slotu boşa çıkarır ve çantanızdaki sıradaki eşyayı satışa koyar.
 
 ### 4. 👥 İki Hesap Birlikte (Takım)
@@ -130,7 +130,7 @@ com.donutsmp.trader/
 * **Minecraft:** 26.2 (Fabric Loader 0.19.3, Fabric API 0.158.0+26.2)
 * **Java:** 25+ *(Gradle/Loom gerekli JDK'yi kendisi indirir)*
 
-`./gradlew build` 159 testi de koşturur; hiçbiri Minecraft istemez.
+`./gradlew build` 161 testi de koşturur; hiçbiri Minecraft istemez.
 
 26.2 obfuscate edilmeden dağıtıldığı için Yarn mapping'i yoktur; proje Mojang
 isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
@@ -270,7 +270,8 @@ git tag v1.0.1 && git push origin v1.0.1
 | **API fiyatı zayıf sinyaldir** | Tarama tutmazsa fiyat `donut.auction`'dan gelir ve tane fiyatı lot boyutuyla çarpılır. API farklı yığın boyutlarını tek bir tane fiyatına indirger; 64'lük yığının tanesi tekli satılandan hep ucuzdur. Taze tarama varsa o kullanılır. |
 | **Menünün fiyat yuvarlaması** | AH, 11.999'u "11k" diye gösteriyor; okunan değer gerçeğinden 999'a kadar düşük olabilir. Yukarıdaki iki eşik bu gürültüyü emiyor, ayrıca kendi ilan tespiti yuvarlanmış fiyatları da eşleştiriyor. |
 | **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` sınıfı yazıldı ama **hiçbir yerden çağrılmıyor**: ne tespit ediyor ne logluyor. İptal edip yeniden koyma akışı da yazılmadı. |
-| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez, ama bu artık modu kilitlemez: dolu görünse de 15 saniyede bir yine denenir ve karar sunucuya bırakılır. `/ah listings` menüsünü **siz** açarsanız sayaç anında gerçeğe oturur. |
+| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç gerçeğin üstünde kalır — ama bu artık listelemeyi durdurmaz, çünkü sayaç kapı değil. HUD bunu ayırt eder: *(tahmin, denemeye devam)* sayacın dolu sandığını, *(sunucu: dolu, N sn)* gerçekten sınıra çarptığınızı gösterir. `/ah listings` açarsanız sayaç anında gerçeğe oturur. |
+| **Sunucunun reddi tanınmazsa** | Sınır mesajı beklenen kelimelerle gelmezse mod ilanın girmediğini **envanterden** anlar: eşya elde kaldıysa deneme başarısızdır ve her başarısızlıkta bekleme iki katına çıkar (3 sn'den 2 dakikaya). Metin eşleşmesine bağlı olmayan asıl emniyet bu. |
 | **`/ah listings` başlık eşleşmesi** | Ekran, başlığında `your listings` / `my listings` / `ilanlar` geçtiğinde tanınır. Sunucudaki başlık farklıysa senkron çalışmaz — `/trader active <sayı>` ile elle eşitleyin. |
 | **Kendi ilanımızın ayırt edilmesi** | Tarama, lore'unda kullanıcı adınız geçen ilanları atlar; ad yazmıyorsa kendi astığımız fiyatlar (son 64 tanesi) atlanır. Sunucu satıcı adını lore'a hiç yazmıyorsa ve fiyatınıza eşit gerçek bir rakip varsa o rakip görülmez — fiyat düşmez, güvenli taraf. |
 | **Onay ekranı** | Onay penceresine basan bir akış yok; `/ah sell` sonrası pencereyi elle kapatmanız gerekebilir. |
