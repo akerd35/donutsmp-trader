@@ -119,6 +119,17 @@ public class TraderCommands {
                         .executes(context -> showLicense(context.getSource()))
                         .then(ClientCommands.argument("key", StringArgumentType.greedyString())
                                 .executes(context -> setLicense(context.getSource(), StringArgumentType.getString(context, "key")))))
+                .then(ClientCommands.literal("sync")
+                        .executes(context -> syncNow(context.getSource()))
+                        .then(ClientCommands.literal("on").executes(context -> setSync(context.getSource(), 120)))
+                        .then(ClientCommands.literal("off").executes(context -> setSync(context.getSource(), 0)))
+                        .then(ClientCommands.literal("command")
+                                .then(ClientCommands.argument("cmd", StringArgumentType.greedyString())
+                                        .executes(context -> setSyncCommand(context.getSource(),
+                                                StringArgumentType.getString(context, "cmd")))))
+                        .then(ClientCommands.argument("seconds", IntegerArgumentType.integer(20, 3600))
+                                .executes(context -> setSync(context.getSource(),
+                                        IntegerArgumentType.getInteger(context, "seconds")))))
                 .then(ClientCommands.literal("why")
                         .executes(context -> showWhy(context.getSource())))
                 .then(ClientCommands.literal("pace")
@@ -226,6 +237,7 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
         source.sendFeedback(Component.literal("  §f/trader update §7-> GitHub'daki son sürümü indirir §8(yeniden başlatınca uygulanır)"));
         source.sendFeedback(Component.literal("  §a/trader why §7-> Mod neden satmıyor, tek satırda söyler"));
+        source.sendFeedback(Component.literal("  §f/trader sync §7-> Aktif ilan sayısını şimdi gerçekle eşitler"));
         source.sendFeedback(Component.literal("  §f/trader pace off §7-> 5dk çalış / 1dk mola döngüsünü kapatır"));
         source.sendFeedback(Component.literal("  §f/trader team §7-> Arkadaşınızın durumu §8(eşya, kalan adet, boş hotbar)"));
         source.sendFeedback(Component.literal("  §f/trader team add <ad> §7-> O oyuncunun fiyatının altına inilmez"));
@@ -252,7 +264,9 @@ public class TraderCommands {
                 ? "§cmola yok §7(kesintisiz)"
                 : "§f" + config.workSeconds + "sn çalış / " + config.restSeconds + "sn mola")));
         if (lm != null) {
-            source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots()));
+            source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots()
+                    + " §7| §eEşitleme: " + (config.listingsSyncSeconds > 0
+                    ? "§f" + config.listingsSyncSeconds + "sn" : "§ckapalı")));
             source.sendFeedback(Component.literal("§eToplam Kasa Kazancı: §a+$" + String.format("%,d", lm.getTotalEarned()) + " §7(Satılan: §f" + lm.getItemsSold() + "x§7)"));
         }
         if (mod != null) {
@@ -483,7 +497,9 @@ public class TraderCommands {
             case DISABLED -> "Başlatmak için: §f/trader on §7ya da §f/trader fullauto <eşya>";
             case RESTING -> "Molayı kapatmak için: §f/trader pace off";
             case COMBAT -> "Savaş bitince kendiliğinden devam eder.";
-            case SLOTS_FULL -> "İlanlarınız dolu. §f/ah listings §7açıp sayacı eşitleyebilirsiniz.";
+            case SLOTS_FULL -> config.listingsSyncSeconds > 0
+                    ? "İlanlarınız dolu. Sayaç 20 sn'de bir gerçekle eşitlenir; hemen için: §f/trader sync"
+                    : "İlanlarınız dolu. Sayaç eşitleme kapalı: §f/trader sync on";
             case IN_AIR -> "Yere inin; sunucu havadayken §f/ah sell §7kabul etmiyor.";
             case BAD_ITEM -> "Hedefi düzeltin: §f/trader item <eşya>";
             case NO_HOTBAR -> "Hotbar'da en az bir slot boşaltın.";
@@ -491,6 +507,52 @@ public class TraderCommands {
             case NO_PRICE -> "Fiyat yok: §f/trader price <fiyat> §7ya da §f/trader floor <fiyat>";
             default -> null;
         };
+    }
+
+    // ---------- ilan sayaci ----------
+
+    private static int syncNow(FabricClientCommandSource source) {
+        TraderConfig config = TraderConfig.get();
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) mod.forceListingsSync();
+
+        source.sendFeedback(Component.literal("§6[DonutTrader] §eAktif ilanlar soruluyor: §f/"
+                + config.listingsCommand));
+        if (config.listingsSyncSeconds <= 0) {
+            source.sendFeedback(Component.literal(
+                    "§7Otomatik eşitleme kapalı. Açmak için: §f/trader sync on"));
+        }
+        return 1;
+    }
+
+    private static int setSync(FabricClientCommandSource source, int seconds) {
+        TraderConfig config = TraderConfig.get();
+        config.listingsSyncSeconds = seconds;
+        config.save();
+
+        if (seconds <= 0) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §eOtomatik sayaç eşitleme: §cKAPALI"));
+            source.sendFeedback(Component.literal(
+                    "§7Sayaç yalnızca sohbet bildirimlerinden yürür; kaçan bildirim modu 18/18'de kilitler."));
+        } else {
+            source.sendFeedback(Component.literal(String.format(
+                    "§6[DonutTrader] §eSayaç her §f%d sn§e'de bir eşitlenir §7(slot doluyken 20 sn'de bir)", seconds)));
+        }
+        return 1;
+    }
+
+    private static int setSyncCommand(FabricClientCommandSource source, String command) {
+        TraderConfig config = TraderConfig.get();
+        config.listingsCommand = command.trim().replaceFirst("^/", "");
+        config.listingsCommandFound = true;
+        if (config.listingsSyncSeconds <= 0) config.listingsSyncSeconds = 120;
+        config.save();
+
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) mod.forceListingsSync();
+
+        source.sendFeedback(Component.literal("§6[DonutTrader] §aİlan komutu: §f/" + config.listingsCommand));
+        return 1;
     }
 
     // ---------- calisma temposu ----------

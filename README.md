@@ -38,6 +38,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 * Sizin hiçbir menü açmanıza gerek yoktur.
 * 18 slot dolana kadar arka arkaya listeler.
 * DonutSMP'den gelen *"You have too many listed items"* mesajını ilk milisaniyede yakalayıp kilitlenir.
+* **Sayacı kendisi doğrular:** aktif ilan ekranını periyodik açıp sayar. Sunucu bir satışı bildirmezse sayaç gerçeğin üstünde kalır ve mod 18/18 sanıp durur; ölçülen bir vakada 5,5 dakika hiç ilan açmadı. Slot dolu görünürken 20 sn'de bir bakar, sayaç üst üste doğru çıkarsa aralığı kademeli açar.
 * Bir eşyanız satıldığında veya siz bir ilanı çektiğinizde sohbetteki bildirimi anında yakalar, slotu boşa çıkarır ve çantanızdaki sıradaki eşyayı satışa koyar.
 
 ### 4. 👥 İki Hesap Birlikte (Takım)
@@ -73,6 +74,7 @@ Bu mod, 64'lük yığınları insan hatası ve eşya kaybı olmadan **1x (tekli)
 | **`/trader undercut percent <yüzde>`** | Sayı | Sabit yerine yüzdesel fark *(büyük olan uygulanır)* |
 | **`/trader sim on\|off`** | `[TAB]` | Simülasyon: eşyayı ayırır ama `/ah sell` göndermez |
 | **`/trader dump on\|off`** | `[TAB]` | Açılan menülerin yapısını dosyaya yazar *(geliştirme için)* |
+| **`/trader sync`** | `[TAB]` | Aktif ilan sayısını hemen gerçekle eşitler; `on`/`off`/`<saniye>` |
 | **`/trader why`** | `[TAB]` | **Mod neden satmıyor?** Engeli ve çözümünü tek satırda söyler |
 | **`/trader pace off`** | `[TAB]` | Çalış/dur döngüsünü kapatır; `on` geri açar |
 | **`/trader pace <çalış> <dur>`** | Sayı | Süreleri saniye olarak verir *(Örn: `/trader pace 600 30`)* |
@@ -129,7 +131,7 @@ com.donutsmp.trader/
 * **Minecraft:** 26.2 (Fabric Loader 0.19.3, Fabric API 0.158.0+26.2)
 * **Java:** 25+ *(Gradle/Loom gerekli JDK'yi kendisi indirir)*
 
-`./gradlew build` 150 testi de koşturur; hiçbiri Minecraft istemez.
+`./gradlew build` 154 testi de koşturur; hiçbiri Minecraft istemez.
 
 26.2 obfuscate edilmeden dağıtıldığı için Yarn mapping'i yoktur; proje Mojang
 isimlerine karşı, `mappings` bağımlılığı olmadan derlenir.
@@ -269,7 +271,7 @@ git tag v1.0.1 && git push origin v1.0.1
 | **API fiyatı zayıf sinyaldir** | Tarama tutmazsa fiyat `donut.auction`'dan gelir ve tane fiyatı lot boyutuyla çarpılır. API farklı yığın boyutlarını tek bir tane fiyatına indirger; 64'lük yığının tanesi tekli satılandan hep ucuzdur. Taze tarama varsa o kullanılır. |
 | **Menünün fiyat yuvarlaması** | AH, 11.999'u "11k" diye gösteriyor; okunan değer gerçeğinden 999'a kadar düşük olabilir. Yukarıdaki iki eşik bu gürültüyü emiyor, ayrıca kendi ilan tespiti yuvarlanmış fiyatları da eşleştiriyor. |
 | **Var olan ilanların yeniden fiyatlanması** | Piyasa yükselince yeni ilanlar doğru fiyattan gider, ama **zaten asılı olan ilanlar eski fiyatta kalır**. `AutoRelister` sınıfı yazıldı ama **hiçbir yerden çağrılmıyor**: ne tespit ediyor ne logluyor. İptal edip yeniden koyma akışı da yazılmadı. |
-| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez; `/ah listings` menüsünü açmak sayacı gerçekle eşitler. |
+| **Sohbet bildirimi eşleşmesi** | Slot sayacı yalnızca "your/you" geçen bildirimleri kendi ilanı sayar. DonutSMP metni farklıysa sayaç düşmez — bu yüzden mod ilan ekranını **kendisi açıp sayar** (`/trader sync`, varsayılan 120 sn; slot dolu görünürken 20 sn). Kapatmak için `/trader sync off`. |
 | **`/ah listings` başlık eşleşmesi** | Ekran, başlığında `your listings` / `my listings` / `ilanlar` geçtiğinde tanınır. Sunucudaki başlık farklıysa senkron çalışmaz — `/trader active <sayı>` ile elle eşitleyin. |
 | **Kendi ilanımızın ayırt edilmesi** | Tarama, lore'unda kullanıcı adınız geçen ilanları atlar; ad yazmıyorsa kendi astığımız fiyatlar (son 64 tanesi) atlanır. Sunucu satıcı adını lore'a hiç yazmıyorsa ve fiyatınıza eşit gerçek bir rakip varsa o rakip görülmez — fiyat düşmez, güvenli taraf. |
 | **Onay ekranı** | Onay penceresine basan bir akış yok; `/ah sell` sonrası pencereyi elle kapatmanız gerekebilir. |

@@ -40,6 +40,11 @@ public class TraderConfig {
     public boolean autoScan = true;
     public String marketCommand = "ah search %s";
     public boolean marketCommandFound = false;
+    /** Aktif ilanları gösteren komut; sayaç bununla gerçekle eşitlenir. */
+    public String listingsCommand = "ah listings";
+    public boolean listingsCommandFound = false;
+    /** Sayacın kendiliğinden eşitlenme aralığı; 0 kapatır. */
+    public int listingsSyncSeconds = 120;
     public int scanIntervalSeconds = 6;
     public int clickDelayMs = 250;
     public int marketPollSeconds = 15;
@@ -141,6 +146,8 @@ public class TraderConfig {
             marketCommand = "ah search %s";
         }
         scanIntervalSeconds = Math.max(3, Math.min(600, scanIntervalSeconds));
+        if (listingsCommand == null || listingsCommand.isBlank()) listingsCommand = "ah listings";
+        if (listingsSyncSeconds != 0) listingsSyncSeconds = Math.max(20, Math.min(3600, listingsSyncSeconds));
         clickDelayMs = Math.max(0, clickDelayMs);
         marketPollSeconds = Math.max(5, marketPollSeconds);
         // Gson kendi ArrayList'ini koyar; okumadan sonra tipi geri almak şart.

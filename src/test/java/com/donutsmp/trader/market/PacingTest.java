@@ -38,6 +38,20 @@ class PacingTest {
         assertEquals(1_000, Pacing.restRemainingMs(359_000, 0, WORK, REST));
     }
 
+    /**
+     * Ilan sayaci esitlemesi de ayni geri cekilmeyi kullanir: sayac ust uste
+     * dogru cikiyorsa gercekten doluyuzdur, menuyu 20 sn'de bir acmak bosuna.
+     */
+    @Test
+    void theListingsSyncBacksOffWhileTheCounterKeepsBeingRight() {
+        long first = 20_000, cap = 120_000;
+        assertEquals(20_000, Pacing.backoffMs(1, first, cap), "ilk kontrol hemen");
+        assertEquals(40_000, Pacing.backoffMs(2, first, cap));
+        assertEquals(80_000, Pacing.backoffMs(3, first, cap));
+        assertEquals(cap, Pacing.backoffMs(4, first, cap), "normal araligi asmaz");
+        assertEquals(cap, Pacing.backoffMs(50, first, cap));
+    }
+
     @Test
     void backoffDoublesAndThenStops() {
         assertEquals(0, Pacing.backoffMs(0, 2000, 60_000));

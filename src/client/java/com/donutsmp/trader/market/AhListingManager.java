@@ -110,10 +110,16 @@ public class AhListingManager {
         return true;
     }
 
-    /** /ah listings ekranından okunan gerçek ilan sayısı. */
-    public synchronized void syncActiveListings(int actual) {
+    /**
+     * /ah listings ekranından okunan gerçek ilan sayısı.
+     *
+     * @return sayacın önceki değeri; farklıysa sayaç kaymış demektir
+     */
+    public synchronized int syncActiveListings(int actual) {
+        int before = this.activeListings;
         this.pendingSince = 0;
         setActiveListings(actual);
+        return before;
     }
 
     public synchronized boolean isInCombat() {

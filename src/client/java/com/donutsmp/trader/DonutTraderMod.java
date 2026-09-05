@@ -67,6 +67,14 @@ public class DonutTraderMod implements ClientModInitializer {
             "ah search %s", "ah %s", "auction search %s", "ah browse %s", "ah sell search %s"
     };
 
+    /** Aktif ilan ekranını hangi komut açıyor; aynı deneme yanılma. */
+    private static final String[] LISTINGS_COMMANDS = {
+            "ah listings", "ah listing", "ah mylistings", "ah my", "auction listings"
+    };
+
+    /** Slot dolu sanırken yanılmak pahalı: o hâlde daha sık bak. */
+    private static final long LISTINGS_SYNC_WHEN_FULL_MS = 20_000;
+
     private static DonutTraderMod INSTANCE;
 
     private DonutAuctionClient apiClient;
@@ -104,7 +112,13 @@ public class DonutTraderMod implements ClientModInitializer {
     private int marketFailures = 0;
     private int candidateIndex = 0;
     private String triedCommand = null;
-    private int lastSyncedListings = -1;
+    private long listingsRequestedAt = 0;
+    private long nextListingsSyncAt = 0;
+    private int listingsFailures = 0;
+    private int listingsCandidate = 0;
+    private String triedListingsCommand = null;
+    /** Üst üste kaç kez "sayaç zaten doğruydu" çıktı. */
+    private int listingsInSync = 0;
     private long verifyAt = 0;
     private int verifySlot = -1;
     private int verifyCount = 0;
@@ -206,6 +220,11 @@ public class DonutTraderMod implements ClientModInitializer {
 
         if (AhScreens.isMyListings(title)) {
             syncListingsFromScreen(client, containerScreen.getMenu());
+            if (listingsRequestedAt > 0) {
+                listingsRequestedAt = 0;
+                onListingsCommandWorked(client);
+                client.player.closeContainer();
+            }
             return;
         }
 
@@ -275,6 +294,73 @@ public class DonutTraderMod implements ClientModInitializer {
         LOGGER.info("[DonutSMP Trader] Piyasa soruldu: /{}", command);
     }
 
+    /**
+     * Aktif ilan sayısını modun kendisi sorar.
+     *
+     * Sayaç sohbet bildirimlerinden yürüyor ve sunucu her satışı bildirmiyor;
+     * kaçan her bildirim sayacı gerçeğin üstünde bırakıyor. 18/18 sanan mod
+     * hiçbir şey listelemez ve bu sessizce dakikalarca sürer — ölçüldü: bir
+     * kere 5,5 dakika. Tek düzeltme oyuncunun elle /ah listings açmasıydı.
+     */
+    private void requestListingsSync(Minecraft client, long now) {
+        if (config.listingsSyncSeconds <= 0) return;
+        if (listingsRequestedAt > 0 || marketRequestedAt > 0) return;
+        if (now < nextListingsSyncAt) return;
+        if (now - lastCommandTime < COMMAND_COOLDOWN_MS) return;
+
+        String template = config.listingsCommandFound
+                ? config.listingsCommand : LISTINGS_COMMANDS[listingsCandidate];
+
+        listingsRequestedAt = now;
+        nextListingsSyncAt = now + (config.listingsCommandFound ? listingsSyncIntervalMs() : 3000L);
+        lastCommandTime = now;
+        triedListingsCommand = template;
+        client.player.connection.sendCommand(template);
+        LOGGER.info("[DonutSMP Trader] Aktif ilanlar soruldu: /{}", template);
+    }
+
+    /**
+     * Dolu sanırken sık, boşken seyrek.
+     *
+     * Sayaç üst üste doğru çıkıyorsa gerçekten doluyuzdur; menüyü yirmi
+     * saniyede bir açıp kapatmak oyuncuyu bir işe yaramadan rahatsız eder.
+     * Her doğru okumada aralık iki katına çıkar, ilk kayan sayaçta sıfırlanır.
+     */
+    private long listingsSyncIntervalMs() {
+        long normal = Math.max(20_000L, config.listingsSyncSeconds * 1000L);
+        if (listingManager.canListMore()) return normal;
+
+        long backoff = Pacing.backoffMs(listingsInSync + 1, LISTINGS_SYNC_WHEN_FULL_MS, normal);
+        return Math.max(LISTINGS_SYNC_WHEN_FULL_MS, backoff);
+    }
+
+    private void onListingsCommandWorked(Minecraft client) {
+        listingsFailures = 0;
+        if (config.listingsCommandFound || triedListingsCommand == null) return;
+        config.listingsCommand = triedListingsCommand;
+        config.listingsCommandFound = true;
+        config.save();
+        client.player.sendSystemMessage(Component.literal(
+                "§6[DonutTrader] §aİlan komutu bulundu: §f/" + triedListingsCommand));
+    }
+
+    /** Komut ekranı açmadı: sıradakini dene, hepsi tükenirse sus. */
+    private void onListingsSyncFailed(Minecraft client) {
+        if (!config.listingsCommandFound && listingsCandidate + 1 < LISTINGS_COMMANDS.length) {
+            listingsCandidate++;
+            return;
+        }
+        if (++listingsFailures < 3) return;
+
+        config.listingsSyncSeconds = 0;
+        config.save();
+        listingsFailures = 0;
+        client.player.sendSystemMessage(Component.literal(
+                "§6[DonutTrader] §cAktif ilan ekranı açılamadı, otomatik sayaç eşitleme kapatıldı."));
+        client.player.sendSystemMessage(Component.literal(
+                "§7Doğru komutu yazıp açın: §f/trader sync command <komut> §7(örn: ah listings)"));
+    }
+
     /** Menü açıldı: denenen komut doğruymuş, kalıcı olarak onu kullan. */
     private void onMarketCommandWorked(Minecraft client) {
         marketFailures = 0;
@@ -303,12 +389,18 @@ public class DonutTraderMod implements ClientModInitializer {
             if (hasPricedLore(menu.slots.get(i).getItem())) counted++;
         }
 
-        listingManager.syncActiveListings(counted);
-        if (counted != lastSyncedListings) {
-            lastSyncedListings = counted;
+        // Duyurunun olcusu SAYACIN duzelmesi, okunan sayinin degismesi degil.
+        // Onceki hâli, iki okuma ayni cikinca susuyordu — oysa en cok bilinmesi
+        // gereken an tam olarak oydu: sayac 18'de takiliyken gercek 8 idi ve
+        // duzeltme sessizce gecti.
+        int before = listingManager.syncActiveListings(counted);
+        if (before != counted) {
+            listingsInSync = 0;
             client.player.sendSystemMessage(Component.literal(String.format(
-                    "§6[DonutTrader] §eAktif ilanlarınız okundu: §f%d/%d",
-                    listingManager.getActiveListings(), listingManager.getMaxSlots())));
+                    "§6[DonutTrader] §eAktif ilanlar: §f%d/%d §7(sayaç %d idi, düzeltildi)",
+                    listingManager.getActiveListings(), listingManager.getMaxSlots(), before)));
+        } else {
+            listingsInSync++;
         }
     }
 
@@ -410,6 +502,10 @@ public class DonutTraderMod implements ClientModInitializer {
             marketRequestedAt = 0;
             onMarketRequestFailed(client);
         }
+        if (listingsRequestedAt > 0 && System.currentTimeMillis() - listingsRequestedAt >= MARKET_REQUEST_TIMEOUT_MS) {
+            listingsRequestedAt = 0;
+            onListingsSyncFailed(client);
+        }
         if (client.player == null || client.getConnection() == null) return;
 
         // Sanal tıklamalar oyuncunun kendi envanter menüsüne gider; başka bir
@@ -438,6 +534,8 @@ public class DonutTraderMod implements ClientModInitializer {
         if (!verifying) {
             if (verifyAt > 0) verifyListing(client);
             requestMarketScan(client, now);
+            // Slot dolu sanip durdugumuzda bile calisir; asil orada gerekiyor.
+            requestListingsSync(client, now);
         }
 
         SellGate.Verdict verdict = SellGate.next(facts(client, now, verifying));
@@ -759,6 +857,13 @@ public class DonutTraderMod implements ClientModInitializer {
      * Tempo değiştiğinde gerekli: eski cycleStart'a göre faz hesaplanınca
      * molayı yeni açan oyuncu doğrudan molanın ortasına düşebiliyor.
      */
+    /** Bir sonraki tick'te ilan sayacini elle eşitle. */
+    public void forceListingsSync() {
+        nextListingsSyncAt = 0;
+        listingsRequestedAt = 0;
+        listingsInSync = 0;
+    }
+
     public void resetCycle() {
         cycleStart = 0;
         restAnnouncedAt = 0;

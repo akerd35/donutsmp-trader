@@ -124,6 +124,43 @@ class AhListingManagerTest {
         assertFalse(manager.canListMore());
     }
 
+    /**
+     * Sayac kaymissa duzeltme gorunur olmali.
+     *
+     * Olculdu: sayac 18/18'de takiliyken gercek 8 idi ve mod 5,5 dakika hic
+     * ilan acmadi. Duzeltme sessizce gectigi icin de kimse fark etmedi.
+     */
+    @Test
+    void syncReportsThePreviousCounterSoDriftIsVisible() {
+        AhListingManager manager = full();
+        assertEquals(18, manager.getActiveListings());
+
+        int before = manager.syncActiveListings(8);
+        assertEquals(18, before, "duzeltilen deger geri donmeli");
+        assertEquals(8, manager.getActiveListings());
+        assertTrue(manager.canListMore(), "duzeltmeden sonra yeniden listeleyebilmeli");
+    }
+
+    @Test
+    void syncReportsNoDriftWhenTheCounterWasRight() {
+        AhListingManager manager = new AhListingManager(18);
+        manager.onListingSent();
+        manager.onListingVerified();
+        assertEquals(1, manager.syncActiveListings(1));
+    }
+
+    /** Sunucu "too many items" dedikten sonra da duzeltme calismali. */
+    @Test
+    void syncClearsAStuckLimitFlag() {
+        AhListingManager manager = new AhListingManager(18);
+        manager.onChatMessage("You have too many listed items!");
+        assertFalse(manager.canListMore());
+
+        manager.syncActiveListings(3);
+        assertTrue(manager.canListMore(), "gercek 3/18 ise kilit kalkmali");
+        assertEquals(3, manager.getActiveListings());
+    }
+
     @Test
     void resetClearsEverything() {
         AhListingManager manager = full();
