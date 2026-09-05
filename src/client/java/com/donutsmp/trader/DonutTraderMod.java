@@ -709,6 +709,17 @@ public class DonutTraderMod implements ClientModInitializer {
         scanPriceAt = 0;
     }
 
+    /**
+     * Döngüyü baştan başlat.
+     *
+     * Tempo değiştiğinde gerekli: eski cycleStart'a göre faz hesaplanınca
+     * molayı yeni açan oyuncu doğrudan molanın ortasına düşebiliyor.
+     */
+    public void resetCycle() {
+        cycleStart = 0;
+        restAnnouncedAt = 0;
+    }
+
     public void toggleEnabled() {
         config.enabled = !config.enabled;
         config.save();

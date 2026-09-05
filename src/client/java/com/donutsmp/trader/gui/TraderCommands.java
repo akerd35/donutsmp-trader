@@ -118,6 +118,15 @@ public class TraderCommands {
                         .executes(context -> showLicense(context.getSource()))
                         .then(ClientCommands.argument("key", StringArgumentType.greedyString())
                                 .executes(context -> setLicense(context.getSource(), StringArgumentType.getString(context, "key")))))
+                .then(ClientCommands.literal("pace")
+                        .executes(context -> showPace(context.getSource()))
+                        .then(ClientCommands.literal("off").executes(context -> setPace(context.getSource(), -1, 0)))
+                        .then(ClientCommands.literal("on").executes(context -> setPace(context.getSource(), -1, -1)))
+                        .then(ClientCommands.argument("work", IntegerArgumentType.integer(0, 86400))
+                                .then(ClientCommands.argument("rest", IntegerArgumentType.integer(0, 86400))
+                                        .executes(context -> setPace(context.getSource(),
+                                                IntegerArgumentType.getInteger(context, "work"),
+                                                IntegerArgumentType.getInteger(context, "rest"))))))
                 .then(ClientCommands.literal("team")
                         .executes(context -> showTeam(context.getSource()))
                         .then(ClientCommands.literal("add")
@@ -213,6 +222,7 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("  §f/trader undercut percent <yüzde> §7-> Sabit yerine yüzdesel fark"));
         source.sendFeedback(Component.literal("  §f/trader sim on|off §7-> Simülasyon: komut göndermeden dene"));
         source.sendFeedback(Component.literal("  §f/trader update §7-> GitHub'daki son sürümü indirir §8(yeniden başlatınca uygulanır)"));
+        source.sendFeedback(Component.literal("  §f/trader pace off §7-> 5dk çalış / 1dk mola döngüsünü kapatır"));
         source.sendFeedback(Component.literal("  §f/trader team §7-> Arkadaşınızın durumu §8(eşya, kalan adet, boş hotbar)"));
         source.sendFeedback(Component.literal("  §f/trader team add <ad> §7-> O oyuncunun fiyatının altına inilmez"));
         source.sendFeedback(Component.literal("  §f/trader team folder <yol> §7-> Ortak klasörle durum paylaşımı"));
@@ -234,9 +244,9 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("§eSatış Fiyatı: §a$" + String.format("%,.0f", recPrice) + " §7| §eTaban Fiyat: §a$" + String.format("%,.0f", config.minPriceFloor)));
         source.sendFeedback(Component.literal("§eAuto-undercut: " + (config.autoUndercut ? "§aAÇIK §7(" + undercutRule(config) + ")" : "§cKAPALI") + (config.simulationMode ? " §7| §eSimülasyon: §eAÇIK" : "")));
         source.sendFeedback(Component.literal("§eMaksimum Slot: §f" + config.maxSlots
-                + (config.workSeconds > 0 && config.restSeconds > 0
-                ? " §7| §eDöngü: §f" + config.workSeconds + "sn çalış / " + config.restSeconds + "sn mola"
-                : "")));
+                + " §7| §eDöngü: " + (paused(config)
+                ? "§cmola yok §7(kesintisiz)"
+                : "§f" + config.workSeconds + "sn çalış / " + config.restSeconds + "sn mola")));
         if (lm != null) {
             source.sendFeedback(Component.literal("§eAktif İlanlar: §f" + lm.getActiveListings() + "/" + lm.getMaxSlots() + " §7| §eKuyruk: §f" + lm.getQueueSize()));
             source.sendFeedback(Component.literal("§eToplam Kasa Kazancı: §a+$" + String.format("%,d", lm.getTotalEarned()) + " §7(Satılan: §f" + lm.getItemsSold() + "x§7)"));
@@ -423,6 +433,58 @@ public class TraderCommands {
         source.sendFeedback(Component.literal("§6[DonutTrader] §eLisans: "
                 + (result.allowed() ? "§a" : "§c") + result.message()));
         return 1;
+    }
+
+
+    // ---------- calisma temposu ----------
+
+    private static final int DEFAULT_WORK_SECONDS = 300;
+    private static final int DEFAULT_REST_SECONDS = 60;
+
+    private static int showPace(FabricClientCommandSource source) {
+        TraderConfig config = TraderConfig.get();
+        if (paused(config)) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §eMola: §cKAPALI §7(kesintisiz çalışır)"));
+        } else {
+            source.sendFeedback(Component.literal(String.format(
+                    "§6[DonutTrader] §eMola: §a%d sn çalış / %d sn dur",
+                    config.workSeconds, config.restSeconds)));
+        }
+        source.sendFeedback(Component.literal("§f/trader pace off §7-> molayı kapatır"));
+        source.sendFeedback(Component.literal("§f/trader pace <çalış> <dur> §7-> süreleri saniye olarak verir"));
+        return 1;
+    }
+
+    /** @param work -1 ise dokunulmaz; rest -1 ise varsayılana döner */
+    private static int setPace(FabricClientCommandSource source, int work, int rest) {
+        TraderConfig config = TraderConfig.get();
+
+        if (rest < 0) {
+            config.workSeconds = config.workSeconds > 0 ? config.workSeconds : DEFAULT_WORK_SECONDS;
+            config.restSeconds = config.restSeconds > 0 ? config.restSeconds : DEFAULT_REST_SECONDS;
+        } else {
+            if (work >= 0) config.workSeconds = work;
+            config.restSeconds = rest;
+        }
+        config.save();
+
+        DonutTraderMod mod = DonutTraderMod.getInstance();
+        if (mod != null) mod.resetCycle();
+
+        if (paused(config)) {
+            source.sendFeedback(Component.literal("§6[DonutTrader] §eMola §ckapatıldı§e: kesintisiz çalışacak."));
+            source.sendFeedback(Component.literal("§7Sunucuya aralıksız komut gider; hız sınırına takılırsan §f/trader pace on"));
+        } else {
+            source.sendFeedback(Component.literal(String.format(
+                    "§6[DonutTrader] §eMola: §a%d sn çalış / %d sn dur",
+                    config.workSeconds, config.restSeconds)));
+        }
+        return 1;
+    }
+
+    /** Iki sureden biri sifirsa mola diye bir sey yoktur. */
+    private static boolean paused(TraderConfig config) {
+        return config.workSeconds <= 0 || config.restSeconds <= 0;
     }
 
     // ---------- takım ----------
