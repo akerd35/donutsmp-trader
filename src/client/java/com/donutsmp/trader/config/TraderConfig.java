@@ -8,6 +8,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.Reader;
 import java.io.Writer;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -76,38 +78,32 @@ public class TraderConfig {
         return INSTANCE;
     }
 
-    /** Dosyayı yeniden okur ve tekil örneğin alanlarına yazar; eldeki referanslar geçerli kalır. */
+    /**
+     * Dosyayı yeniden okur ve tekil örneğin alanlarına yazar; eldeki
+     * referanslar geçerli kalır.
+     *
+     * Alanlar tek tek elle kopyalanıyordu ve her yeni ayar üç yere birden
+     * yazılmak zorundaydı; biri unutulunca o ayar sessizce yenilenmiyordu.
+     */
     public static synchronized TraderConfig reload() {
         TraderConfig fresh = read();
         TraderConfig live = get();
-        live.enabled = fresh.enabled;
-        live.maxSlots = fresh.maxSlots;
-        live.targetItem = fresh.targetItem;
-        live.lotSize = fresh.lotSize;
-        live.fallbackPrice = fresh.fallbackPrice;
-        live.minPriceFloor = fresh.minPriceFloor;
-        live.autoUndercut = fresh.autoUndercut;
-        live.undercutAmount = fresh.undercutAmount;
-        live.undercutPercent = fresh.undercutPercent;
-        live.minRepriceStep = fresh.minRepriceStep;
-        live.minUndercutGap = fresh.minUndercutGap;
-        live.minCompetitorsBelow = fresh.minCompetitorsBelow;
-        live.autoScan = fresh.autoScan;
-        live.marketCommand = fresh.marketCommand;
-        live.marketCommandFound = fresh.marketCommandFound;
-        live.scanIntervalSeconds = fresh.scanIntervalSeconds;
-        live.clickDelayMs = fresh.clickDelayMs;
-        live.marketPollSeconds = fresh.marketPollSeconds;
-        live.simulationMode = fresh.simulationMode;
-        live.workSeconds = fresh.workSeconds;
-        live.restSeconds = fresh.restSeconds;
-        live.licenseKey = fresh.licenseKey;
-        live.dumpScreens = fresh.dumpScreens;
-        live.teammates = fresh.teammates;
-        live.teamFolder = fresh.teamFolder;
-        live.teamStaleSeconds = fresh.teamStaleSeconds;
+        copyInto(fresh, live);
         live.clamp();
         return live;
+    }
+
+    /** Ayar alanlarının hepsi, tek tek saymadan. */
+    static void copyInto(TraderConfig from, TraderConfig to) {
+        for (Field field : TraderConfig.class.getDeclaredFields()) {
+            int mods = field.getModifiers();
+            if (Modifier.isStatic(mods) || Modifier.isFinal(mods)) continue;
+            try {
+                field.set(to, field.get(from));
+            } catch (IllegalAccessException e) {
+                LOGGER.warn("Ayar kopyalanamadı: {}", field.getName());
+            }
+        }
     }
 
     private static TraderConfig read() {
